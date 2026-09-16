@@ -1,0 +1,10 @@
+<nav class="navbar navbar-expand navbar-light bg-white border-bottom mb-4">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/">CUN Fest</a>
+        <div class="navbar-nav">
+            <a class="nav-link {% if request.url.path == '/' %}active fw-semibold{% endif %}" href="/">Home</a>
+            <a class="nav-link {% if request.url.path == '/iscriviti' %}active fw-semibold{% endif %}" href="/iscriviti">Iscriviti</a>
+            <a class="nav-link {% if request.url.path == '/login' %}active fw-semibold{% endif %}" href="/login">Area operatori</a>
+        </div>
+    </div>
+</nav>
