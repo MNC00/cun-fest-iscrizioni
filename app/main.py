@@ -54,6 +54,26 @@ TIPI_EVENTO_LABELS = {
 }
 templates.env.globals["TIPI_EVENTO_LABELS"] = TIPI_EVENTO_LABELS
 
+# Sul form pubblico il partecipante sceglie solo la zona di provenienza geografica
+# (Nord/Centro/Sud): la fascia di prezzo effettiva (usata per il calcolo) ne è
+# derivata automaticamente, così l'utente non deve conoscere la terminologia
+# interna "Uninord"/"Unisud". Centro e Sud confluiscono nella stessa fascia.
+MAPPA_ZONA_FASCIA = {
+    "Nord": "Uninord",
+    "Centro": "Unisud",
+    "Sud": "Unisud",
+}
+
+
+def _deriva_fascia_da_zona(zona_provenienza: str | None, fascia_dichiarata: str) -> str:
+    """Deriva la fascia di prezzo dalla zona di provenienza del partecipante.
+
+    Se la zona non è tra quelle note (Nord/Centro/Sud) — es. iscrizioni via
+    /modifica-iscrizione o estensioni che non passano dal form pubblico —
+    mantiene la fascia dichiarata esplicitamente nella richiesta.
+    """
+    return MAPPA_ZONA_FASCIA.get(zona_provenienza, fascia_dichiarata)
+
 
 def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
     """Costruisce il contesto per le email di conferma/aggiornamento prezzo di un partecipante."""
@@ -165,7 +185,7 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 flag_cena_ristorante_domenica=p.flag_cena_ristorante_domenica,
                 tipo_evento=p.tipo_evento,
                 note=p.note,
-                fascia_prezzo=p.fascia_prezzo,
+                fascia_prezzo=_deriva_fascia_da_zona(p.zona_provenienza, p.fascia_prezzo),
                 token_annullamento=uuid.uuid4().hex,
             )
             db.add(partecipante)

@@ -227,7 +227,6 @@ document.addEventListener("DOMContentLoaded", function () {
                 cognome: tipo === "singola" ? partecipanti[0].cognome : formData.get("referente_cognome"),
                 email: formData.get("referente_email"),
                 telefono: formData.get("referente_telefono") || null,
-                zona_provenienza: formData.get("referente_zona_provenienza") || null,
             };
         }
 

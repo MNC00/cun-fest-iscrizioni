@@ -56,10 +56,6 @@
                         <label class="form-label">Telefono</label>
                         <input type="tel" class="form-control" name="referente_telefono">
                     </div>
-                    <div class="col-md-6 campo-referente-contatto">
-                        <label class="form-label">Zona di provenienza</label>
-                        <input type="text" class="form-control" name="referente_zona_provenienza">
-                    </div>
                     <div class="col-md-6 d-none campo-famiglia-esistente">
                         <label class="form-label">Email del nucleo già iscritto</label>
                         <input type="email" class="form-control" name="famiglia_esistente_email">
@@ -114,7 +110,12 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label">Zona di provenienza</label>
-                <input type="text" class="form-control" data-field="zona_provenienza">
+                <select class="form-select" data-field="zona_provenienza">
+                    <option value="" selected disabled>Seleziona...</option>
+                    <option value="Nord">Nord</option>
+                    <option value="Centro">Centro</option>
+                    <option value="Sud">Sud</option>
+                </select>
             </div>
             <div class="col-md-6">
                 <label class="form-label">Tipo di iscrizione all'evento</label>

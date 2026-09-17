@@ -28,6 +28,13 @@ Quando i prezzi ufficiali sono noti, inseriscili in `tariffe` adattando
 `sql/seed_tariffe_esempio.sql` (fasce Generale/Uninord/Unisud, prezzi
 notte/pasti, tetto di spesa, sconto giovani, date di validità).
 
+**Sconto giovani — aggiorna `ANNO_RIFERIMENTO`:** in `app/calcolo.py` la
+costante `ANNO_RIFERIMENTO` (in cima al file) definisce l'anno rispetto al
+quale si calcola l'età di un partecipante (`ANNO_RIFERIMENTO - anno di nascita
+<= 30` → si applica `sconto_giovani_percentuale` della tariffa). Va aggiornata
+a mano ad ogni edizione con l'anno del festival, altrimenti lo sconto verrà
+calcolato con l'età sbagliata.
+
 **Importante:** le colonne `valido_dal`/`valido_al` di `tariffe` non sono solo
 informative: l'app le usa anche per calcolare il periodo valido dell'evento
 (minimo di `valido_dal` e massimo di `valido_al` tra le tariffe attive) e
