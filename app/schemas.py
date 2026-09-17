@@ -23,8 +23,6 @@ class PartecipanteRequest(BaseModel):
     pasto_partenza: Optional[str] = None
     flag_solo_pranzo_cun: bool = False
     flag_parliamo_solo_lunedi: bool = False
-    flag_arrivo_dopo_cena: bool = False
-    flag_partenza_prima_colazione: bool = False
     note: Optional[str] = None
     fascia_prezzo: str = "Generale"
 

@@ -56,37 +56,25 @@
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label class="form-label" for="pasto_arrivo">Pasto arrivo</label>
-                        <select class="form-select" id="pasto_arrivo" name="pasto_arrivo"
-                                {% if partecipante.flag_arrivo_dopo_cena %}disabled{% endif %} required>
-                            {% for opzione in ["nessuno", "colazione", "pranzo", "cena"] %}
+                        <select class="form-select" id="pasto_arrivo" name="pasto_arrivo" required>
+                            {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("dopo_cena", "Dopo cena")] %}
                             <option value="{{ opzione }}" {% if partecipante.pasto_arrivo == opzione %}selected{% endif %}>
-                                {{ opzione|capitalize }}
+                                {{ etichetta }}
                             </option>
                             {% endfor %}
                         </select>
-                        <div class="form-check mt-2">
-                            <input type="checkbox" class="form-check-input" id="flag_arrivo_dopo_cena" name="flag_arrivo_dopo_cena"
-                                   {% if partecipante.flag_arrivo_dopo_cena %}checked{% endif %}
-                                   onchange="document.getElementById('pasto_arrivo').disabled = this.checked;">
-                            <label class="form-check-label" for="flag_arrivo_dopo_cena">Arrivo dopo cena (+1 notte, nessun pasto)</label>
-                        </div>
+                        <div class="form-text">Da quale pasto contare il giorno di arrivo (o "Dopo cena" se arriva a cena conclusa).</div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="pasto_partenza">Pasto partenza</label>
-                        <select class="form-select" id="pasto_partenza" name="pasto_partenza"
-                                {% if partecipante.flag_partenza_prima_colazione %}disabled{% endif %} required>
-                            {% for opzione in ["nessuno", "colazione", "pranzo", "cena"] %}
+                        <select class="form-select" id="pasto_partenza" name="pasto_partenza" required>
+                            {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("prima_colazione", "Prima di colazione")] %}
                             <option value="{{ opzione }}" {% if partecipante.pasto_partenza == opzione %}selected{% endif %}>
-                                {{ opzione|capitalize }}
+                                {{ etichetta }}
                             </option>
                             {% endfor %}
                         </select>
-                        <div class="form-check mt-2">
-                            <input type="checkbox" class="form-check-input" id="flag_partenza_prima_colazione" name="flag_partenza_prima_colazione"
-                                   {% if partecipante.flag_partenza_prima_colazione %}checked{% endif %}
-                                   onchange="document.getElementById('pasto_partenza').disabled = this.checked;">
-                            <label class="form-check-label" for="flag_partenza_prima_colazione">Partenza prima di colazione (+1 notte, nessun pasto)</label>
-                        </div>
+                        <div class="form-text">Fino a quale pasto contare il giorno di partenza (o "Prima di colazione" se parte prima).</div>
                     </div>
                 </div>
 

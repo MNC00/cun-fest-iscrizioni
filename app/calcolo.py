@@ -31,7 +31,9 @@ def _conta_pasti(partecipante: Partecipante) -> dict:
             pranzi += 1
         elif pasto == "cena":
             cene += 1
-        # "nessuno" o valori non riconosciuti: nessun incremento
+        # "nessuno", "dopo_cena", "prima_colazione" o valori non riconosciuti: nessun incremento.
+        # La notte del giorno di arrivo/partenza è già inclusa nel calcolo di "notti"
+        # (basato sulla differenza di date), quindi non serve alcuna notte aggiuntiva.
 
     if partecipante.data_arrivo == partecipante.data_partenza:
         # Stesso giorno: si applicano sia il pasto di arrivo che quello di partenza
@@ -68,13 +70,6 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
         raise CalcoloPrezzoError("La data di partenza precede la data di arrivo.")
 
     notti = (partecipante.data_partenza - partecipante.data_arrivo).days
-
-    # Arrivo dopo cena / partenza prima di colazione: si aggiunge una notte
-    # in più per il pernottamento fuori dagli orari standard, senza pasti.
-    if partecipante.flag_arrivo_dopo_cena:
-        notti += 1
-    if partecipante.flag_partenza_prima_colazione:
-        notti += 1
 
     pasti = _conta_pasti(partecipante)
     colazioni, pranzi, cene = pasti["colazioni"], pasti["pranzi"], pasti["cene"]

@@ -99,12 +99,10 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 zona_provenienza=p.zona_provenienza,
                 data_arrivo=p.data_arrivo,
                 data_partenza=p.data_partenza,
-                pasto_arrivo="nessuno" if p.flag_arrivo_dopo_cena else p.pasto_arrivo,
-                pasto_partenza="nessuno" if p.flag_partenza_prima_colazione else p.pasto_partenza,
+                pasto_arrivo=p.pasto_arrivo,
+                pasto_partenza=p.pasto_partenza,
                 flag_solo_pranzo_cun=p.flag_solo_pranzo_cun,
                 flag_parliamo_solo_lunedi=p.flag_parliamo_solo_lunedi,
-                flag_arrivo_dopo_cena=p.flag_arrivo_dopo_cena,
-                flag_partenza_prima_colazione=p.flag_partenza_prima_colazione,
                 note=p.note,
                 fascia_prezzo=p.fascia_prezzo,
             )
@@ -361,8 +359,6 @@ def modifica_iscrizione_submit(
     note: str = Form(""),
     flag_solo_pranzo_cun: str | None = Form(None),
     flag_parliamo_solo_lunedi: str | None = Form(None),
-    flag_arrivo_dopo_cena: str | None = Form(None),
-    flag_partenza_prima_colazione: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     username = get_current_operatore_username(request)
@@ -385,19 +381,13 @@ def modifica_iscrizione_submit(
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
         "flag_parliamo_solo_lunedi": partecipante.flag_parliamo_solo_lunedi,
-        "flag_arrivo_dopo_cena": partecipante.flag_arrivo_dopo_cena,
-        "flag_partenza_prima_colazione": partecipante.flag_partenza_prima_colazione,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 
     partecipante.data_arrivo = data_arrivo
     partecipante.data_partenza = data_partenza
-    partecipante.flag_arrivo_dopo_cena = flag_arrivo_dopo_cena is not None
-    partecipante.flag_partenza_prima_colazione = flag_partenza_prima_colazione is not None
-    partecipante.pasto_arrivo = "nessuno" if partecipante.flag_arrivo_dopo_cena else pasto_arrivo
-    partecipante.pasto_partenza = (
-        "nessuno" if partecipante.flag_partenza_prima_colazione else pasto_partenza
-    )
+    partecipante.pasto_arrivo = pasto_arrivo
+    partecipante.pasto_partenza = pasto_partenza
     partecipante.fascia_prezzo = fascia_prezzo
     partecipante.note = note or None
     partecipante.flag_solo_pranzo_cun = flag_solo_pranzo_cun is not None
@@ -419,8 +409,6 @@ def modifica_iscrizione_submit(
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
         "flag_parliamo_solo_lunedi": partecipante.flag_parliamo_solo_lunedi,
-        "flag_arrivo_dopo_cena": partecipante.flag_arrivo_dopo_cena,
-        "flag_partenza_prima_colazione": partecipante.flag_partenza_prima_colazione,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 

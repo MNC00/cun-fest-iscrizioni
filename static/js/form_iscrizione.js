@@ -32,25 +32,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const checkSoloPranzo = blocco.querySelector('[data-field="flag_solo_pranzo_cun"]');
         const checkParliamoLunedi = blocco.querySelector('[data-field="flag_parliamo_solo_lunedi"]');
-        const checkDopoCena = blocco.querySelector('[data-field="flag_arrivo_dopo_cena"]');
-        const checkPrimaColazione = blocco.querySelector('[data-field="flag_partenza_prima_colazione"]');
-        const selectPastoArrivo = blocco.querySelector('[data-field="pasto_arrivo"]');
-        const selectPastoPartenza = blocco.querySelector('[data-field="pasto_partenza"]');
         const campiPasto = blocco.querySelectorAll(".campo-pasto");
         const msgParliamoLunedi = blocco.querySelector(".msg-parliamo-lunedi");
         const btnRimuovi = blocco.querySelector(".btn-rimuovi-partecipante");
 
-        function aggiornaStatoPasti() {
+        checkSoloPranzo.addEventListener("change", function () {
             campiPasto.forEach((campo) => {
+                const select = campo.querySelector("select");
                 campo.classList.toggle("d-none", checkSoloPranzo.checked);
+                select.disabled = checkSoloPranzo.checked;
             });
-            selectPastoArrivo.disabled = checkSoloPranzo.checked || checkDopoCena.checked;
-            selectPastoPartenza.disabled = checkSoloPranzo.checked || checkPrimaColazione.checked;
-        }
-
-        checkSoloPranzo.addEventListener("change", aggiornaStatoPasti);
-        checkDopoCena.addEventListener("change", aggiornaStatoPasti);
-        checkPrimaColazione.addEventListener("change", aggiornaStatoPasti);
+        });
 
         checkParliamoLunedi.addEventListener("change", function () {
             msgParliamoLunedi.classList.toggle("d-none", !checkParliamoLunedi.checked);
@@ -165,8 +157,6 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             const soloPranzoCun = getChecked("flag_solo_pranzo_cun");
-            const dopoCena = getChecked("flag_arrivo_dopo_cena");
-            const primaColazione = getChecked("flag_partenza_prima_colazione");
 
             partecipanti.push({
                 nome: getVal("nome"),
@@ -175,12 +165,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 zona_provenienza: getVal("zona_provenienza") || null,
                 data_arrivo: getVal("data_arrivo") || null,
                 data_partenza: getVal("data_partenza") || null,
-                pasto_arrivo: soloPranzoCun || dopoCena ? "nessuno" : getVal("pasto_arrivo"),
-                pasto_partenza: soloPranzoCun || primaColazione ? "nessuno" : getVal("pasto_partenza"),
+                pasto_arrivo: soloPranzoCun ? "nessuno" : getVal("pasto_arrivo"),
+                pasto_partenza: soloPranzoCun ? "nessuno" : getVal("pasto_partenza"),
                 flag_solo_pranzo_cun: soloPranzoCun,
                 flag_parliamo_solo_lunedi: getChecked("flag_parliamo_solo_lunedi"),
-                flag_arrivo_dopo_cena: dopoCena,
-                flag_partenza_prima_colazione: primaColazione,
                 note: getVal("note") || null,
                 fascia_prezzo: "Generale",
             });

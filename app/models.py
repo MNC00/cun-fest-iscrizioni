@@ -47,8 +47,6 @@ class Partecipante(Base):
     pasto_partenza = Column(String)
     flag_solo_pranzo_cun = Column(Boolean, default=False)
     flag_parliamo_solo_lunedi = Column(Boolean, default=False)
-    flag_arrivo_dopo_cena = Column(Boolean, default=False)
-    flag_partenza_prima_colazione = Column(Boolean, default=False)
     note = Column(Text)
     fascia_prezzo = Column(String, default="Generale")
     stato_iscrizione = Column(String, default="Inviata")
