@@ -40,97 +40,113 @@
                     </div>
                 </div>
 
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label" for="data_arrivo">Data arrivo</label>
-                        <input type="date" class="form-control" id="data_arrivo" name="data_arrivo"
-                               value="{{ partecipante.data_arrivo.isoformat() if partecipante.data_arrivo else '' }}"
-                               {% if data_min_evento %}min="{{ data_min_evento }}"{% endif %}
-                               {% if data_max_evento %}max="{{ data_max_evento }}"{% endif %}
-                               required>
+                <div class="mb-3">
+                    <label class="form-label d-block">Tipo di iscrizione a questo evento</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="modalita_iscrizione" value="normale" id="modalita_normale"
+                               {% if not partecipante.flag_solo_pranzo_cun %}checked{% endif %}>
+                        <label class="form-check-label" for="modalita_normale">Iscrizione normale</label>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="data_partenza">Data partenza</label>
-                        <input type="date" class="form-control" id="data_partenza" name="data_partenza"
-                               value="{{ partecipante.data_partenza.isoformat() if partecipante.data_partenza else '' }}"
-                               {% if data_min_evento %}min="{{ data_min_evento }}"{% endif %}
-                               {% if data_max_evento %}max="{{ data_max_evento }}"{% endif %}
-                               required>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="modalita_iscrizione" value="pranzo_cun" id="modalita_pranzo"
+                               {% if partecipante.flag_solo_pranzo_cun %}checked{% endif %}>
+                        <label class="form-check-label" for="modalita_pranzo">Solo pranzo CUN</label>
                     </div>
+                    <!-- checkbox reale letta dal backend, sincronizzata via JS con la scelta sopra -->
+                    <input type="hidden" id="flag_solo_pranzo_cun_hidden" name="flag_solo_pranzo_cun"
+                           value="{{ 'true' if partecipante.flag_solo_pranzo_cun else 'false' }}">
                 </div>
 
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label" for="pasto_arrivo">Pasto arrivo</label>
-                        <select class="form-select" id="pasto_arrivo" name="pasto_arrivo" required>
-                            {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("dopo_cena", "Dopo cena")] %}
-                            <option value="{{ opzione }}" {% if partecipante.pasto_arrivo == opzione %}selected{% endif %}>
-                                {{ etichetta }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                        <div class="form-text">Da quale pasto contare il giorno di arrivo (o "Dopo cena" se arriva a cena conclusa).</div>
+                <div id="blocco-eventi-normali">
+                    <div class="mb-3">
+                        <label class="form-label d-block">A quali eventi partecipa?</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="flag_precun" name="flag_precun"
+                                   {% if partecipante.flag_precun %}checked{% endif %}>
+                            <label class="form-check-label" for="flag_precun">PreCunFest</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="flag_campo_famiglie" name="flag_campo_famiglie"
+                                   {% if partecipante.flag_campo_famiglie %}checked{% endif %}>
+                            <label class="form-check-label" for="flag_campo_famiglie">Campo Famiglie</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="flag_cun_fest" name="flag_cun_fest"
+                                   {% if partecipante.flag_cun_fest %}checked{% endif %}>
+                            <label class="form-check-label" for="flag_cun_fest">CunFest</label>
+                        </div>
+                        <div class="form-text">PreCunFest e Campo Famiglie sono mutuamente esclusivi (si svolgono in contemporanea).</div>
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="pasto_partenza">Pasto partenza</label>
-                        <select class="form-select" id="pasto_partenza" name="pasto_partenza" required>
-                            {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("prima_colazione", "Prima di colazione")] %}
-                            <option value="{{ opzione }}" {% if partecipante.pasto_partenza == opzione %}selected{% endif %}>
-                                {{ etichetta }}
-                            </option>
-                            {% endfor %}
-                        </select>
-                        <div class="form-text">Fino a quale pasto contare il giorno di partenza (o "Prima di colazione" se parte prima).</div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="data_arrivo">Data arrivo</label>
+                            <input type="date" class="form-control" id="data_arrivo" name="data_arrivo"
+                                   value="{{ partecipante.data_arrivo.isoformat() if partecipante.data_arrivo else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="data_partenza">Data partenza</label>
+                            <input type="date" class="form-control" id="data_partenza" name="data_partenza"
+                                   value="{{ partecipante.data_partenza.isoformat() if partecipante.data_partenza else '' }}">
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="pasto_arrivo">Pasto arrivo</label>
+                            <select class="form-select" id="pasto_arrivo" name="pasto_arrivo">
+                                {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("dopo_cena", "Dopo cena")] %}
+                                <option value="{{ opzione }}" {% if partecipante.pasto_arrivo == opzione %}selected{% endif %}>
+                                    {{ etichetta }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Da quale pasto contare il giorno di arrivo (o "Dopo cena" se arriva a cena conclusa).</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label" for="pasto_partenza">Pasto partenza</label>
+                            <select class="form-select" id="pasto_partenza" name="pasto_partenza">
+                                {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("prima_colazione", "Prima di colazione")] %}
+                                <option value="{{ opzione }}" {% if partecipante.pasto_partenza == opzione %}selected{% endif %}>
+                                    {{ etichetta }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Fino a quale pasto contare il giorno di partenza (o "Prima di colazione" se parte prima).</div>
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-2">
+                        <input type="checkbox" class="form-check-input" id="flag_bosco_domenica" name="flag_bosco_domenica"
+                               onchange="document.getElementById('blocco-cena-domenica').classList.toggle('d-none', !this.checked)"
+                               {% if partecipante.flag_bosco_domenica %}checked{% endif %}>
+                        <label class="form-check-label" for="flag_bosco_domenica">Vorrebbe dormire a Bosco la domenica sera (+1 notte)</label>
+                    </div>
+
+                    <div class="mb-4 {% if not partecipante.flag_bosco_domenica %}d-none{% endif %}" id="blocco-cena-domenica">
+                        <label class="form-label d-block">Cena della domenica</label>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="flag_cena_ristorante_domenica" value="true" id="cena_ristorante"
+                                   {% if partecipante.flag_cena_ristorante_domenica %}checked{% endif %}>
+                            <label class="form-check-label" for="cena_ristorante">Al ristorante</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="flag_cena_ristorante_domenica" value="false" id="cena_autonoma"
+                                   {% if partecipante.flag_cena_ristorante_domenica == false %}checked{% endif %}>
+                            <label class="form-check-label" for="cena_autonoma">Mi organizzo autonomamente</label>
+                        </div>
                     </div>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label" for="fascia_prezzo">Fascia prezzo</label>
                     <select class="form-select" id="fascia_prezzo" name="fascia_prezzo" required>
-                        {% for opzione in ["Generale", "Uninord", "Unisud"] %}
+                        {% for opzione in ["Nord", "Altro"] %}
                         <option value="{{ opzione }}" {% if partecipante.fascia_prezzo == opzione %}selected{% endif %}>
                             {{ opzione }}
                         </option>
                         {% endfor %}
                     </select>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label" for="tipo_evento">Tipo di iscrizione all'evento</label>
-                    <select class="form-select" id="tipo_evento" name="tipo_evento" required>
-                        {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
-                        <option value="{{ valore }}" {% if partecipante.tipo_evento == valore %}selected{% endif %}>
-                            {{ etichetta }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <div class="form-check mb-2">
-                    <input type="checkbox" class="form-check-input" id="flag_solo_pranzo_cun" name="flag_solo_pranzo_cun"
-                           {% if partecipante.flag_solo_pranzo_cun %}checked{% endif %}>
-                    <label class="form-check-label" for="flag_solo_pranzo_cun">Solo pranzo CUN</label>
-                </div>
-
-                <div class="form-check mb-2">
-                    <input type="checkbox" class="form-check-input" id="flag_bosco_domenica" name="flag_bosco_domenica"
-                           onchange="document.getElementById('blocco-cena-domenica').classList.toggle('d-none', !this.checked)"
-                           {% if partecipante.flag_bosco_domenica %}checked{% endif %}>
-                    <label class="form-check-label" for="flag_bosco_domenica">Vorrebbe dormire a Bosco la domenica sera (+1 notte)</label>
-                </div>
-
-                <div class="mb-4 {% if not partecipante.flag_bosco_domenica %}d-none{% endif %}" id="blocco-cena-domenica">
-                    <label class="form-label d-block">Cena della domenica</label>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="flag_cena_ristorante_domenica" value="true" id="cena_ristorante"
-                               {% if partecipante.flag_cena_ristorante_domenica %}checked{% endif %}>
-                        <label class="form-check-label" for="cena_ristorante">Al ristorante</label>
-                    </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="flag_cena_ristorante_domenica" value="false" id="cena_autonoma"
-                               {% if partecipante.flag_cena_ristorante_domenica == false %}checked{% endif %}>
-                        <label class="form-check-label" for="cena_autonoma">Mi organizzo autonomamente</label>
-                    </div>
                 </div>
 
                 <div class="mb-4">
@@ -144,5 +160,63 @@
         </div>
     </div>
 </div>
+<script>
+    const PERIODI_EVENTI = {{ periodi_eventi | tojson }};
+    const inputDataArrivo = document.getElementById("data_arrivo");
+    const inputDataPartenza = document.getElementById("data_partenza");
+    const checkPrecun = document.getElementById("flag_precun");
+    const checkCampoFamiglie = document.getElementById("flag_campo_famiglie");
+    const checkCunFest = document.getElementById("flag_cun_fest");
+    const radioNormale = document.getElementById("modalita_normale");
+    const radioPranzo = document.getElementById("modalita_pranzo");
+    const hiddenSoloPranzo = document.getElementById("flag_solo_pranzo_cun_hidden");
+    const bloccoEventiNormali = document.getElementById("blocco-eventi-normali");
+
+    function aggiornaVincoliData() {
+        const componenti = [];
+        if (checkPrecun.checked) componenti.push("precun");
+        if (checkCampoFamiglie.checked) componenti.push("campo_famiglie");
+        if (checkCunFest.checked) componenti.push("cun_fest");
+
+        let dataMin = null;
+        let dataMax = null;
+        componenti.forEach((tipo) => {
+            const periodo = PERIODI_EVENTI[tipo];
+            if (!periodo) return;
+            if (periodo.min && (!dataMin || periodo.min < dataMin)) dataMin = periodo.min;
+            if (periodo.max && (!dataMax || periodo.max > dataMax)) dataMax = periodo.max;
+        });
+
+        inputDataArrivo.min = dataMin || "";
+        inputDataPartenza.min = dataMin || "";
+        inputDataArrivo.max = dataMax || "";
+        inputDataPartenza.max = dataMax || "";
+    }
+
+    checkPrecun.addEventListener("change", function () {
+        if (checkPrecun.checked) checkCampoFamiglie.checked = false;
+        aggiornaVincoliData();
+    });
+    checkCampoFamiglie.addEventListener("change", function () {
+        if (checkCampoFamiglie.checked) checkPrecun.checked = false;
+        aggiornaVincoliData();
+    });
+    checkCunFest.addEventListener("change", aggiornaVincoliData);
+
+    function aggiornaModalita() {
+        const isPranzoCun = radioPranzo.checked;
+        hiddenSoloPranzo.value = isPranzoCun ? "true" : "false";
+        bloccoEventiNormali.classList.toggle("d-none", isPranzoCun);
+        bloccoEventiNormali.querySelectorAll("input, select").forEach((campo) => {
+            campo.disabled = isPranzoCun;
+        });
+        if (!isPranzoCun) aggiornaVincoliData();
+    }
+
+    radioNormale.addEventListener("change", aggiornaModalita);
+    radioPranzo.addEventListener("change", aggiornaModalita);
+    aggiornaModalita();
+    aggiornaVincoliData();
+</script>
 </body>
 </html>

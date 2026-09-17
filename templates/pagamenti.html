@@ -67,7 +67,11 @@
                     {% for pagamento in pagamenti %}
                     <tr>
                         <td>{{ pagamento.partecipante.nome }} {{ pagamento.partecipante.cognome }}</td>
-                        <td class="small text-muted">{{ TIPI_EVENTO_LABELS.get(pagamento.partecipante.tipo_evento, pagamento.partecipante.tipo_evento) }}</td>
+                        <td class="small text-muted">
+                            {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
+                            {% if pagamento.partecipante[CAMPO_EVENTO[valore]] %}{{ etichetta }}<br>{% endif %}
+                            {% endfor %}
+                        </td>
                         <td>{{ pagamento.partecipante.famiglia.referente_nome }} {{ pagamento.partecipante.famiglia.referente_cognome }}</td>
                         <td>{{ "%.2f"|format(pagamento.importo_dovuto or 0) }} €</td>
                         <td>{{ "%.2f"|format(pagamento.importo_pagato or 0) }} €</td>

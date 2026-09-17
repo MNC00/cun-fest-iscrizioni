@@ -34,7 +34,7 @@ from app.email_service import (
     invia_comunicazione_massa,
     invia_conferma_iscrizione,
 )
-from app.models import Famiglia, LogEvento, Operatore, Pagamento, Partecipante, Tariffa
+from app.models import Famiglia, LogEvento, Operatore, Pagamento, Partecipante, PeriodoEvento, Tariffa
 from app.pagamenti import sincronizza_pagamento
 from app.schemas import IscrizioneFamigliaRequest
 
@@ -48,20 +48,32 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 TIPI_EVENTO_LABELS = {
-    "precun_cun": "PreCunFest + CunFest",
-    "campo_famiglie_cun": "Campo Famiglie + CunFest",
-    "solo_cun": "Solo CunFest",
+    "precun": "PreCunFest",
+    "campo_famiglie": "Campo Famiglie",
+    "cun_fest": "CunFest",
+    "pranzo_cun": "Solo pranzo CUN",
 }
 templates.env.globals["TIPI_EVENTO_LABELS"] = TIPI_EVENTO_LABELS
+
+# Campo booleano di Partecipante corrispondente a ciascun valore del filtro
+# "evento" usato nelle pagine operatore (dashboard, pagamenti, comunicazioni).
+CAMPO_EVENTO = {
+    "precun": "flag_precun",
+    "campo_famiglie": "flag_campo_famiglie",
+    "cun_fest": "flag_cun_fest",
+    "pranzo_cun": "flag_solo_pranzo_cun",
+}
+templates.env.globals["CAMPO_EVENTO"] = CAMPO_EVENTO
 
 # Sul form pubblico il partecipante sceglie solo la zona di provenienza geografica
 # (Nord/Centro/Sud): la fascia di prezzo effettiva (usata per il calcolo) ne è
 # derivata automaticamente, così l'utente non deve conoscere la terminologia
-# interna "Uninord"/"Unisud". Centro e Sud confluiscono nella stessa fascia.
+# interna "Nord"/"Altro" come categoria tariffaria. Centro e Sud confluiscono
+# nella stessa fascia ("Altro").
 MAPPA_ZONA_FASCIA = {
-    "Nord": "Uninord",
-    "Centro": "Unisud",
-    "Sud": "Unisud",
+    "Nord": "Nord",
+    "Centro": "Altro",
+    "Sud": "Altro",
 }
 
 
@@ -73,6 +85,20 @@ def _deriva_fascia_da_zona(zona_provenienza: str | None, fascia_dichiarata: str)
     mantiene la fascia dichiarata esplicitamente nella richiesta.
     """
     return MAPPA_ZONA_FASCIA.get(zona_provenienza, fascia_dichiarata)
+
+
+def _periodi_evento_dict(db: Session) -> dict:
+    """Ritorna {tipo_evento: {"min": iso|None, "max": iso|None}} per tutti gli
+    eventi configurati in periodi_evento, usato dal form pubblico per
+    restringere via JS le date in base agli eventi selezionati dall'utente."""
+    righe = db.query(PeriodoEvento).all()
+    return {
+        riga.tipo_evento: {
+            "min": riga.data_inizio.isoformat() if riga.data_inizio else None,
+            "max": riga.data_fine.isoformat() if riga.data_fine else None,
+        }
+        for riga in righe
+    }
 
 
 def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
@@ -108,14 +134,12 @@ def read_root(request: Request):
 
 @app.get("/iscriviti")
 def form_iscrizione(request: Request, db: Session = Depends(get_db)):
-    data_min, data_max = ottieni_periodo_evento(db)
     return templates.TemplateResponse(
         request=request,
         name="form_iscrizione.html",
         context={
             "title": "Iscrizione CUN Fest",
-            "data_min_evento": data_min.isoformat() if data_min else None,
-            "data_max_evento": data_max.isoformat() if data_max else None,
+            "periodi_eventi": _periodi_evento_dict(db),
         },
     )
 
@@ -129,9 +153,23 @@ def test_db_models(db: Session = Depends(get_db)):
 @app.post("/iscriviti")
 def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db)):
     try:
-        data_min, data_max = ottieni_periodo_evento(db)
-        if data_min and data_max:
-            for p in payload.partecipanti:
+        for p in payload.partecipanti:
+            if p.flag_solo_pranzo_cun:
+                # Le date sono fisse e vengono impostate automaticamente al
+                # momento del calcolo del prezzo: nessuna validazione qui.
+                continue
+
+            componenti = [
+                evento
+                for evento, attivo in (
+                    ("precun", p.flag_precun),
+                    ("campo_famiglie", p.flag_campo_famiglie),
+                    ("cun_fest", p.flag_cun_fest),
+                )
+                if attivo
+            ]
+            data_min, data_max = ottieni_periodo_evento(db, componenti)
+            if data_min and data_max:
                 for etichetta, valore in (("arrivo", p.data_arrivo), ("partenza", p.data_partenza)):
                     if valore and (valore < data_min or valore > data_max):
                         raise HTTPException(
@@ -183,7 +221,9 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 flag_solo_pranzo_cun=p.flag_solo_pranzo_cun,
                 flag_bosco_domenica=p.flag_bosco_domenica,
                 flag_cena_ristorante_domenica=p.flag_cena_ristorante_domenica,
-                tipo_evento=p.tipo_evento,
+                flag_precun=p.flag_precun,
+                flag_campo_famiglie=p.flag_campo_famiglie,
+                flag_cun_fest=p.flag_cun_fest,
                 note=p.note,
                 fascia_prezzo=_deriva_fascia_da_zona(p.zona_provenienza, p.fascia_prezzo),
                 token_annullamento=uuid.uuid4().hex,
@@ -291,7 +331,10 @@ def dashboard(
     # Famiglie/solo CunFest) è per partecipante: una famiglia resta visibile se ha
     # almeno un partecipante del pacchetto selezionato.
     def _match_evento(p: Partecipante) -> bool:
-        return evento == "tutti" or p.tipo_evento == evento
+        if evento == "tutti":
+            return True
+        campo = CAMPO_EVENTO.get(evento)
+        return bool(campo and getattr(p, campo, False))
 
     attivi_per_famiglia = [
         [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata" and _match_evento(p)]
@@ -430,8 +473,6 @@ def modifica_iscrizione_form(
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
-    data_min, data_max = ottieni_periodo_evento(db)
-
     return templates.TemplateResponse(
         request=request,
         name="modifica_iscrizione.html",
@@ -439,8 +480,7 @@ def modifica_iscrizione_form(
             "title": "Modifica iscrizione",
             "username": username,
             "partecipante": partecipante,
-            "data_min_evento": data_min.isoformat() if data_min else None,
-            "data_max_evento": data_max.isoformat() if data_max else None,
+            "periodi_eventi": _periodi_evento_dict(db),
         },
     )
 
@@ -449,14 +489,16 @@ def modifica_iscrizione_form(
 def modifica_iscrizione_submit(
     partecipante_id: int,
     request: Request,
-    data_arrivo: date = Form(...),
-    data_partenza: date = Form(...),
+    data_arrivo: date | None = Form(None),
+    data_partenza: date | None = Form(None),
     pasto_arrivo: str = Form("nessuno"),
     pasto_partenza: str = Form("nessuno"),
     fascia_prezzo: str = Form(...),
-    tipo_evento: str = Form("solo_cun"),
     note: str = Form(""),
     flag_solo_pranzo_cun: str | None = Form(None),
+    flag_precun: str | None = Form(None),
+    flag_campo_famiglie: str | None = Form(None),
+    flag_cun_fest: str | None = Form(None),
     flag_bosco_domenica: str | None = Form(None),
     flag_cena_ristorante_domenica: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -474,18 +516,66 @@ def modifica_iscrizione_submit(
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
-    data_min, data_max = ottieni_periodo_evento(db)
-    if data_min and data_max:
-        for etichetta, valore in (("arrivo", data_arrivo), ("partenza", data_partenza)):
-            if valore < data_min or valore > data_max:
-                return RedirectResponse(
-                    url=(
-                        f"/modifica-iscrizione/{partecipante_id}?errore="
-                        f"Data di {etichetta} fuori dal periodo dell'evento "
-                        f"({data_min.strftime('%d/%m/%Y')} - {data_max.strftime('%d/%m/%Y')})."
-                    ),
-                    status_code=303,
-                )
+    e_solo_pranzo_cun = flag_solo_pranzo_cun == "true"
+    e_precun = flag_precun is not None
+    e_campo_famiglie = flag_campo_famiglie is not None
+    e_cun_fest = flag_cun_fest is not None
+
+    if e_solo_pranzo_cun and (e_precun or e_campo_famiglie or e_cun_fest):
+        return RedirectResponse(
+            url=(
+                f"/modifica-iscrizione/{partecipante_id}?errore="
+                "'Solo pranzo CUN' non può essere combinato con altri eventi."
+            ),
+            status_code=303,
+        )
+    if not e_solo_pranzo_cun and e_precun and e_campo_famiglie:
+        return RedirectResponse(
+            url=(
+                f"/modifica-iscrizione/{partecipante_id}?errore="
+                "PreCunFest e Campo Famiglie si svolgono in contemporanea: selezionane solo uno."
+            ),
+            status_code=303,
+        )
+    if not e_solo_pranzo_cun and not (e_precun or e_campo_famiglie or e_cun_fest):
+        return RedirectResponse(
+            url=(
+                f"/modifica-iscrizione/{partecipante_id}?errore="
+                "Seleziona almeno un evento oppure 'Solo pranzo CUN'."
+            ),
+            status_code=303,
+        )
+
+    if not e_solo_pranzo_cun:
+        if not data_arrivo or not data_partenza:
+            return RedirectResponse(
+                url=(
+                    f"/modifica-iscrizione/{partecipante_id}?errore="
+                    "Data di arrivo e di partenza sono obbligatorie."
+                ),
+                status_code=303,
+            )
+        componenti = [
+            evento
+            for evento, attivo in (
+                ("precun", e_precun),
+                ("campo_famiglie", e_campo_famiglie),
+                ("cun_fest", e_cun_fest),
+            )
+            if attivo
+        ]
+        data_min, data_max = ottieni_periodo_evento(db, componenti)
+        if data_min and data_max:
+            for etichetta, valore in (("arrivo", data_arrivo), ("partenza", data_partenza)):
+                if valore < data_min or valore > data_max:
+                    return RedirectResponse(
+                        url=(
+                            f"/modifica-iscrizione/{partecipante_id}?errore="
+                            f"Data di {etichetta} fuori dal periodo dell'evento "
+                            f"({data_min.strftime('%d/%m/%Y')} - {data_max.strftime('%d/%m/%Y')})."
+                        ),
+                        status_code=303,
+                    )
 
     valori_precedenti = {
         "data_arrivo": partecipante.data_arrivo.isoformat() if partecipante.data_arrivo else None,
@@ -493,22 +583,39 @@ def modifica_iscrizione_submit(
         "pasto_arrivo": partecipante.pasto_arrivo,
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
+        "flag_precun": partecipante.flag_precun,
+        "flag_campo_famiglie": partecipante.flag_campo_famiglie,
+        "flag_cun_fest": partecipante.flag_cun_fest,
         "flag_bosco_domenica": partecipante.flag_bosco_domenica,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 
-    partecipante.data_arrivo = data_arrivo
-    partecipante.data_partenza = data_partenza
-    partecipante.pasto_arrivo = pasto_arrivo
-    partecipante.pasto_partenza = pasto_partenza
+    partecipante.flag_solo_pranzo_cun = e_solo_pranzo_cun
+    partecipante.flag_precun = e_precun
+    partecipante.flag_campo_famiglie = e_campo_famiglie
+    partecipante.flag_cun_fest = e_cun_fest
+
+    if e_solo_pranzo_cun:
+        # Le date vengono impostate automaticamente dal calcolo del prezzo
+        # in base a periodi_evento; qui azzeriamo eventuali date residue.
+        partecipante.data_arrivo = None
+        partecipante.data_partenza = None
+        partecipante.pasto_arrivo = None
+        partecipante.pasto_partenza = None
+        partecipante.flag_bosco_domenica = False
+        partecipante.flag_cena_ristorante_domenica = None
+    else:
+        partecipante.data_arrivo = data_arrivo
+        partecipante.data_partenza = data_partenza
+        partecipante.pasto_arrivo = pasto_arrivo
+        partecipante.pasto_partenza = pasto_partenza
+        partecipante.flag_bosco_domenica = flag_bosco_domenica is not None
+        partecipante.flag_cena_ristorante_domenica = (
+            (flag_cena_ristorante_domenica == "true") if partecipante.flag_bosco_domenica else None
+        )
+
     partecipante.fascia_prezzo = fascia_prezzo
-    partecipante.tipo_evento = tipo_evento
     partecipante.note = note or None
-    partecipante.flag_solo_pranzo_cun = flag_solo_pranzo_cun is not None
-    partecipante.flag_bosco_domenica = flag_bosco_domenica is not None
-    partecipante.flag_cena_ristorante_domenica = (
-        (flag_cena_ristorante_domenica == "true") if partecipante.flag_bosco_domenica else None
-    )
 
     try:
         dettagli_calcolo = calcola_prezzo_partecipante(partecipante, db)
@@ -525,6 +632,9 @@ def modifica_iscrizione_submit(
         "pasto_arrivo": partecipante.pasto_arrivo,
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
+        "flag_precun": partecipante.flag_precun,
+        "flag_campo_famiglie": partecipante.flag_campo_famiglie,
+        "flag_cun_fest": partecipante.flag_cun_fest,
         "flag_bosco_domenica": partecipante.flag_bosco_domenica,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
@@ -890,7 +1000,9 @@ def pagamenti_lista(
         query = query.filter(Pagamento.stato == "Pagato")
 
     if evento != "tutti":
-        query = query.filter(Partecipante.tipo_evento == evento)
+        campo = CAMPO_EVENTO.get(evento)
+        if campo:
+            query = query.filter(getattr(Partecipante, campo).is_(True))
 
     pagamenti = query.order_by(Pagamento.id).all()
 
@@ -956,7 +1068,9 @@ def _query_destinatari(db: Session, fascia: str, stato_iscrizione: str, tipo_eve
     if stato_iscrizione:
         query = query.filter(Partecipante.stato_iscrizione == stato_iscrizione)
     if tipo_evento:
-        query = query.filter(Partecipante.tipo_evento == tipo_evento)
+        campo = CAMPO_EVENTO.get(tipo_evento)
+        if campo:
+            query = query.filter(getattr(Partecipante, campo).is_(True))
     return query
 
 

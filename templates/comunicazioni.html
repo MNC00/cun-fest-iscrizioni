@@ -24,7 +24,7 @@
                         <label class="form-label" for="fascia">Fascia</label>
                         <select class="form-select" id="fascia" name="fascia">
                             <option value="" {% if not filtri.fascia %}selected{% endif %}>Tutte</option>
-                            {% for opzione in ["Generale", "Uninord", "Unisud"] %}
+                            {% for opzione in ["Nord", "Altro"] %}
                             <option value="{{ opzione }}" {% if filtri.fascia == opzione %}selected{% endif %}>{{ opzione }}</option>
                             {% endfor %}
                         </select>

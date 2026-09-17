@@ -2,39 +2,103 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models import LogEvento, Partecipante, Tariffa
+from app.models import LogEvento, Partecipante, PeriodoEvento, Tariffa
 
 ANNO_RIFERIMENTO = 2026
 ETA_LIMITE_SCONTO_GIOVANI = 30
 
 PASTI_VALIDI = {"colazione", "pranzo", "cena"}
 
+# Eventi "atomici" che un partecipante può combinare liberamente (con l'unico
+# vincolo che precun e campo_famiglie sono mutuamente esclusivi, applicato in
+# app/schemas.py). "pranzo_cun" è un'iscrizione a sé, gestita separatamente.
+EVENTI_ATOMICI = ["precun", "campo_famiglie", "cun_fest"]
+
+# Colonna booleana di Partecipante corrispondente a ciascun tipo di evento,
+# usata per i filtri di dashboard/pagamenti/comunicazioni/report pasti.
+COLONNA_EVENTO = {
+    "precun": Partecipante.flag_precun,
+    "campo_famiglie": Partecipante.flag_campo_famiglie,
+    "cun_fest": Partecipante.flag_cun_fest,
+    "pranzo_cun": Partecipante.flag_solo_pranzo_cun,
+}
+
 
 class CalcoloPrezzoError(Exception):
     """Errore applicativo nel calcolo del prezzo di un partecipante."""
 
 
-def ottieni_periodo_evento(db: Session) -> tuple:
-    """Ritorna (data_min, data_max) del periodo dell'evento, calcolato come
-    l'unione degli intervalli valido_dal/valido_al delle tariffe attive.
+def componenti_selezionati(partecipante: Partecipante) -> list:
+    """Ritorna la lista degli eventi atomici a cui il partecipante è iscritto
+    (esclude 'pranzo_cun', che è un'iscrizione a sé stante)."""
+    return [
+        evento
+        for evento in EVENTI_ATOMICI
+        if getattr(partecipante, f"flag_{evento}", False)
+    ]
 
-    Stesso periodo per tutti i pacchetti (PreCunFest, Campo Famiglie, solo
-    CunFest): la distinzione tra pacchetti serve solo per report/filtri, non
-    per il calcolo di questo intervallo. Se le tariffe non hanno le date
-    valorizzate (o non sono ancora configurate), ritorna (None, None): nessun
-    vincolo applicato (coerente con lo scenario "prezzi non ancora noti").
+
+def categoria_tariffa(partecipante: Partecipante) -> str:
+    """Determina quale tipo di evento governa il calcolo del prezzo quando un
+    partecipante seleziona più eventi atomici insieme (es. precun + cun_fest).
+
+    Semplificazione consapevole: non si dividono le notti/pasti per periodo di
+    ogni singolo evento, si usa un'unica tariffa "categoria" per l'intero
+    soggiorno, con priorità Campo Famiglie > PreCunFest > CunFest (i primi due
+    sono programmi più specifici quando presenti in combinazione con CunFest).
     """
-    righe = (
-        db.query(Tariffa.valido_dal, Tariffa.valido_al)
-        .filter(Tariffa.attivo.is_(True))
-        .all()
-    )
-    date_inizio = [r.valido_dal for r in righe if r.valido_dal is not None]
-    date_fine = [r.valido_al for r in righe if r.valido_al is not None]
+    if partecipante.flag_solo_pranzo_cun:
+        return "pranzo_cun"
+    if partecipante.flag_campo_famiglie:
+        return "campo_famiglie"
+    if partecipante.flag_precun:
+        return "precun"
+    return "cun_fest"
+
+
+def ottieni_periodo_evento(db: Session, tipi_evento: list | None = None) -> tuple:
+    """Ritorna (data_min, data_max) del periodo valido, unione delle finestre
+    configurate in `periodi_evento` per i tipi di evento indicati (o per tutti
+    i tipi configurati se tipi_evento è None).
+
+    Se nessuna finestra è configurata per i tipi richiesti, ritorna (None, None):
+    nessun vincolo applicato (coerente con lo scenario "date non ancora note").
+    """
+    query = db.query(PeriodoEvento.data_inizio, PeriodoEvento.data_fine)
+    if tipi_evento is not None:
+        query = query.filter(PeriodoEvento.tipo_evento.in_(tipi_evento))
+    righe = query.all()
+
+    date_inizio = [r.data_inizio for r in righe if r.data_inizio is not None]
+    date_fine = [r.data_fine for r in righe if r.data_fine is not None]
 
     data_min = min(date_inizio) if date_inizio else None
     data_max = max(date_fine) if date_fine else None
     return data_min, data_max
+
+
+def _trova_tariffa(db: Session, tipo_evento: str, fascia: str) -> Tariffa:
+    """Cerca la tariffa attiva per (tipo_evento, fascia); se non c'è un
+    override specifico per quella fascia, ricade sulla tariffa base
+    dell'evento (fascia NULL)."""
+    tariffa = (
+        db.query(Tariffa)
+        .filter(Tariffa.tipo_evento == tipo_evento, Tariffa.fascia == fascia, Tariffa.attivo.is_(True))
+        .first()
+    )
+    if tariffa:
+        return tariffa
+
+    tariffa = (
+        db.query(Tariffa)
+        .filter(Tariffa.tipo_evento == tipo_evento, Tariffa.fascia.is_(None), Tariffa.attivo.is_(True))
+        .first()
+    )
+    if not tariffa:
+        raise CalcoloPrezzoError(
+            f"Nessuna tariffa attiva trovata per l'evento '{tipo_evento}' (fascia '{fascia}')."
+        )
+    return tariffa
 
 
 def _conta_pasti(partecipante: Partecipante) -> dict:
@@ -81,11 +145,90 @@ def _conta_pasti(partecipante: Partecipante) -> dict:
     return {"colazioni": colazioni, "pranzi": pranzi, "cene": cene}
 
 
+def _applica_tetto_e_sconto(prezzo_lordo: float, tariffa: Tariffa, partecipante: Partecipante) -> tuple:
+    """Applica il tetto di spesa e lo sconto giovani, condivisi tra tutti i percorsi di calcolo."""
+    if tariffa.tetto_spesa_fascia is not None and prezzo_lordo > float(tariffa.tetto_spesa_fascia):
+        prezzo_lordo = float(tariffa.tetto_spesa_fascia)
+
+    sconto_eta = 0.0
+    eta = None
+    if partecipante.data_nascita:
+        eta = ANNO_RIFERIMENTO - partecipante.data_nascita.year
+        if eta <= ETA_LIMITE_SCONTO_GIOVANI:
+            sconto_percentuale = float(tariffa.sconto_giovani_percentuale or 0)
+            sconto_eta = prezzo_lordo * (sconto_percentuale / 100)
+
+    return prezzo_lordo, sconto_eta, eta
+
+
+def _salva_e_logga(partecipante: Partecipante, db: Session, dettagli: dict) -> dict:
+    partecipante.notti_calcolate = dettagli["notti"]
+    partecipante.prezzo_lordo = dettagli["prezzo_lordo"]
+    partecipante.sconto_eta = dettagli["sconto_eta"]
+    partecipante.prezzo_netto = dettagli["prezzo_netto"]
+    partecipante.stato_iscrizione = "Calcolata"
+
+    log = LogEvento(
+        oggetto_tipo="partecipante",
+        oggetto_id=partecipante.id,
+        azione="prezzo_calcolato",
+        operatore="sistema",
+        dettagli=dettagli,
+    )
+    db.add(log)
+    db.add(partecipante)
+    db.commit()
+    db.refresh(partecipante)
+
+    return dettagli
+
+
+def _calcola_prezzo_solo_pranzo_cun(partecipante: Partecipante, db: Session) -> dict:
+    """'Solo pranzo CUN' è un giorno fisso e un prezzo flat (nessuna notte, un
+    solo pranzo): se le date non sono valorizzate le imposta automaticamente
+    dalla finestra configurata in periodi_evento per 'pranzo_cun'."""
+    if not partecipante.data_arrivo or not partecipante.data_partenza:
+        data_inizio, data_fine = ottieni_periodo_evento(db, ["pranzo_cun"])
+        if not data_inizio:
+            raise CalcoloPrezzoError(
+                "Data del pranzo CUN non ancora configurata (tabella periodi_evento)."
+            )
+        partecipante.data_arrivo = data_inizio
+        partecipante.data_partenza = data_fine or data_inizio
+
+    partecipante.pasto_arrivo = "pranzo"
+    partecipante.pasto_partenza = "pranzo"
+
+    tariffa = _trova_tariffa(db, "pranzo_cun", partecipante.fascia_prezzo)
+    prezzo_lordo = float(tariffa.prezzo_pranzo or 0)
+    prezzo_lordo, sconto_eta, eta = _applica_tetto_e_sconto(prezzo_lordo, tariffa, partecipante)
+    prezzo_netto = prezzo_lordo - sconto_eta
+
+    dettagli = {
+        "notti": 0,
+        "colazioni": 0,
+        "pranzi": 1,
+        "cene": 0,
+        "fascia_prezzo": partecipante.fascia_prezzo,
+        "tipo_evento_tariffa": "pranzo_cun",
+        "tariffa_id": tariffa.id,
+        "flag_solo_pranzo_cun": True,
+        "eta": eta,
+        "prezzo_lordo": prezzo_lordo,
+        "sconto_eta": sconto_eta,
+        "prezzo_netto": prezzo_netto,
+    }
+    return _salva_e_logga(partecipante, db, dettagli)
+
+
 def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict:
     """Calcola notti, pasti e prezzo netto di un partecipante, aggiorna il DB e logga l'evento.
 
     Ritorna un dizionario con tutti i valori calcolati.
     """
+    if partecipante.flag_solo_pranzo_cun:
+        return _calcola_prezzo_solo_pranzo_cun(partecipante, db)
+
     if not partecipante.data_arrivo or not partecipante.data_partenza:
         raise CalcoloPrezzoError("Il partecipante non ha date di arrivo/partenza valide.")
 
@@ -102,44 +245,18 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
     pasti = _conta_pasti(partecipante)
     colazioni, pranzi, cene = pasti["colazioni"], pasti["pranzi"], pasti["cene"]
 
-    tariffa = (
-        db.query(Tariffa)
-        .filter(Tariffa.fascia == partecipante.fascia_prezzo, Tariffa.attivo.is_(True))
-        .first()
+    categoria = categoria_tariffa(partecipante)
+    tariffa = _trova_tariffa(db, categoria, partecipante.fascia_prezzo)
+
+    prezzo_lordo = (
+        notti * float(tariffa.prezzo_notte or 0)
+        + colazioni * float(tariffa.prezzo_colazione or 0)
+        + pranzi * float(tariffa.prezzo_pranzo or 0)
+        + cene * float(tariffa.prezzo_cena or 0)
     )
-    if not tariffa:
-        raise CalcoloPrezzoError(
-            f"Nessuna tariffa attiva trovata per la fascia '{partecipante.fascia_prezzo}'."
-        )
 
-    if partecipante.flag_solo_pranzo_cun:
-        prezzo_lordo = pranzi * float(tariffa.prezzo_pranzo or 0)
-    else:
-        prezzo_lordo = (
-            notti * float(tariffa.prezzo_notte or 0)
-            + colazioni * float(tariffa.prezzo_colazione or 0)
-            + pranzi * float(tariffa.prezzo_pranzo or 0)
-            + cene * float(tariffa.prezzo_cena or 0)
-        )
-
-    if tariffa.tetto_spesa_fascia is not None and prezzo_lordo > float(tariffa.tetto_spesa_fascia):
-        prezzo_lordo = float(tariffa.tetto_spesa_fascia)
-
-    sconto_eta = 0.0
-    eta = None
-    if partecipante.data_nascita:
-        eta = ANNO_RIFERIMENTO - partecipante.data_nascita.year
-        if eta <= ETA_LIMITE_SCONTO_GIOVANI:
-            sconto_percentuale = float(tariffa.sconto_giovani_percentuale or 0)
-            sconto_eta = prezzo_lordo * (sconto_percentuale / 100)
-
+    prezzo_lordo, sconto_eta, eta = _applica_tetto_e_sconto(prezzo_lordo, tariffa, partecipante)
     prezzo_netto = prezzo_lordo - sconto_eta
-
-    partecipante.notti_calcolate = notti
-    partecipante.prezzo_lordo = prezzo_lordo
-    partecipante.sconto_eta = sconto_eta
-    partecipante.prezzo_netto = prezzo_netto
-    partecipante.stato_iscrizione = "Calcolata"
 
     dettagli = {
         "notti": notti,
@@ -147,27 +264,15 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
         "pranzi": pranzi,
         "cene": cene,
         "fascia_prezzo": partecipante.fascia_prezzo,
+        "tipo_evento_tariffa": categoria,
         "tariffa_id": tariffa.id,
-        "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
+        "flag_solo_pranzo_cun": False,
         "eta": eta,
         "prezzo_lordo": prezzo_lordo,
         "sconto_eta": sconto_eta,
         "prezzo_netto": prezzo_netto,
     }
-
-    log = LogEvento(
-        oggetto_tipo="partecipante",
-        oggetto_id=partecipante.id,
-        azione="prezzo_calcolato",
-        operatore="sistema",
-        dettagli=dettagli,
-    )
-    db.add(log)
-    db.add(partecipante)
-    db.commit()
-    db.refresh(partecipante)
-
-    return dettagli
+    return _salva_e_logga(partecipante, db, dettagli)
 
 
 def calcola_pasti_per_giorno(partecipante: Partecipante, db: Session = None) -> dict:
@@ -220,8 +325,9 @@ def genera_report_pasti(db: Session, tipo_evento: str | None = None) -> list:
     Considera solo i partecipanti con stato_iscrizione diverso da 'Annullata'
     e con date di arrivo/partenza valorizzate. Copre l'intero intervallo tra
     la data di arrivo più vecchia e la data di partenza più recente.
-    Se tipo_evento è valorizzato, filtra solo i partecipanti di quel pacchetto
-    (PreCunFest+Cun / Campo Famiglie+Cun / solo Cun).
+    Se tipo_evento è valorizzato (precun/campo_famiglie/cun_fest/pranzo_cun),
+    filtra solo i partecipanti iscritti a quell'evento (un partecipante può
+    comparire in più filtri se ha selezionato più eventi).
     """
     query = db.query(Partecipante).filter(
         Partecipante.stato_iscrizione != "Annullata",
@@ -229,7 +335,9 @@ def genera_report_pasti(db: Session, tipo_evento: str | None = None) -> list:
         Partecipante.data_partenza.isnot(None),
     )
     if tipo_evento:
-        query = query.filter(Partecipante.tipo_evento == tipo_evento)
+        colonna = COLONNA_EVENTO.get(tipo_evento)
+        if colonna is not None:
+            query = query.filter(colonna.is_(True))
     partecipanti = query.all()
 
     conteggi: dict = {}

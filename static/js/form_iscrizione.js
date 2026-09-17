@@ -30,7 +30,13 @@ document.addEventListener("DOMContentLoaded", function () {
             label.setAttribute("for", label.getAttribute("for") + "-" + partecipanteCounter);
         });
 
-        const checkSoloPranzo = blocco.querySelector('[data-field="flag_solo_pranzo_cun"]');
+        const checkModalitaNormale = blocco.querySelector('[data-field="modalita_iscrizione"][value="normale"]');
+        const checkModalitaPranzo = blocco.querySelector('[data-field="modalita_iscrizione"][value="pranzo_cun"]');
+        const blocchiEventiNormali = blocco.querySelectorAll(".blocco-eventi-normali");
+        const blocchiPranzoCun = blocco.querySelectorAll(".blocco-pranzo-cun");
+        const checkPrecun = blocco.querySelector('[data-field="flag_precun"]');
+        const checkCampoFamiglie = blocco.querySelector('[data-field="flag_campo_famiglie"]');
+        const checkCunFest = blocco.querySelector('[data-field="flag_cun_fest"]');
         const checkBoscoDomenica = blocco.querySelector('[data-field="flag_bosco_domenica"]');
         const campiPasto = blocco.querySelectorAll(".campo-pasto");
         const msgBoscoDomenica = blocco.querySelector(".msg-bosco-domenica");
@@ -39,24 +45,60 @@ document.addEventListener("DOMContentLoaded", function () {
         const inputDataArrivo = blocco.querySelector('[data-field="data_arrivo"]');
         const inputDataPartenza = blocco.querySelector('[data-field="data_partenza"]');
 
-        if (window.PERIODO_EVENTO) {
-            if (window.PERIODO_EVENTO.min) {
-                inputDataArrivo.min = window.PERIODO_EVENTO.min;
-                inputDataPartenza.min = window.PERIODO_EVENTO.min;
-            }
-            if (window.PERIODO_EVENTO.max) {
-                inputDataArrivo.max = window.PERIODO_EVENTO.max;
-                inputDataPartenza.max = window.PERIODO_EVENTO.max;
-            }
+        function aggiornaVincoliData() {
+            if (!window.PERIODI_EVENTI) return;
+            const componenti = [];
+            if (checkPrecun && checkPrecun.checked) componenti.push("precun");
+            if (checkCampoFamiglie && checkCampoFamiglie.checked) componenti.push("campo_famiglie");
+            if (checkCunFest && checkCunFest.checked) componenti.push("cun_fest");
+
+            let dataMin = null;
+            let dataMax = null;
+            componenti.forEach((tipo) => {
+                const periodo = window.PERIODI_EVENTI[tipo];
+                if (!periodo) return;
+                if (periodo.min && (!dataMin || periodo.min < dataMin)) dataMin = periodo.min;
+                if (periodo.max && (!dataMax || periodo.max > dataMax)) dataMax = periodo.max;
+            });
+
+            inputDataArrivo.min = dataMin || "";
+            inputDataPartenza.min = dataMin || "";
+            inputDataArrivo.max = dataMax || "";
+            inputDataPartenza.max = dataMax || "";
         }
 
-        checkSoloPranzo.addEventListener("change", function () {
-            campiPasto.forEach((campo) => {
-                const select = campo.querySelector("select");
-                campo.classList.toggle("d-none", checkSoloPranzo.checked);
-                select.disabled = checkSoloPranzo.checked;
+        // PreCunFest e Campo Famiglie sono mutuamente esclusivi (si svolgono in contemporanea)
+        if (checkPrecun && checkCampoFamiglie) {
+            checkPrecun.addEventListener("change", function () {
+                if (checkPrecun.checked) checkCampoFamiglie.checked = false;
+                aggiornaVincoliData();
             });
-        });
+            checkCampoFamiglie.addEventListener("change", function () {
+                if (checkCampoFamiglie.checked) checkPrecun.checked = false;
+                aggiornaVincoliData();
+            });
+        }
+        if (checkCunFest) {
+            checkCunFest.addEventListener("change", aggiornaVincoliData);
+        }
+
+        function aggiornaModalitaIscrizione() {
+            const isPranzoCun = checkModalitaPranzo && checkModalitaPranzo.checked;
+            blocchiEventiNormali.forEach((el) => {
+                el.classList.toggle("d-none", isPranzoCun);
+                el.querySelectorAll("input, select, textarea").forEach((campo) => {
+                    campo.disabled = isPranzoCun;
+                });
+            });
+            blocchiPranzoCun.forEach((el) => el.classList.toggle("d-none", !isPranzoCun));
+            if (!isPranzoCun) aggiornaVincoliData();
+        }
+
+        if (checkModalitaNormale && checkModalitaPranzo) {
+            checkModalitaNormale.addEventListener("change", aggiornaModalitaIscrizione);
+            checkModalitaPranzo.addEventListener("change", aggiornaModalitaIscrizione);
+        }
+        aggiornaModalitaIscrizione();
 
         checkBoscoDomenica.addEventListener("change", function () {
             msgBoscoDomenica.classList.toggle("d-none", !checkBoscoDomenica.checked);
@@ -175,8 +217,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 return el ? el.checked : false;
             };
 
-            const soloPranzoCun = getChecked("flag_solo_pranzo_cun");
-            const boscoDomenica = getChecked("flag_bosco_domenica");
+            const modalitaEl = blocco.querySelector('[data-field="modalita_iscrizione"]:checked');
+            const soloPranzoCun = modalitaEl ? modalitaEl.value === "pranzo_cun" : false;
+            const boscoDomenica = soloPranzoCun ? false : getChecked("flag_bosco_domenica");
             const cenaRistoranteEl = blocco.querySelector('[data-field="flag_cena_ristorante_domenica"]:checked');
             const cenaRistorante = boscoDomenica && cenaRistoranteEl ? cenaRistoranteEl.value === "true" : null;
 
@@ -186,16 +229,18 @@ document.addEventListener("DOMContentLoaded", function () {
                 data_nascita: getVal("data_nascita") || null,
                 luogo_nascita: getVal("luogo_nascita") || null,
                 zona_provenienza: getVal("zona_provenienza") || null,
-                data_arrivo: getVal("data_arrivo") || null,
-                data_partenza: getVal("data_partenza") || null,
+                data_arrivo: soloPranzoCun ? null : (getVal("data_arrivo") || null),
+                data_partenza: soloPranzoCun ? null : (getVal("data_partenza") || null),
                 pasto_arrivo: soloPranzoCun ? "nessuno" : getVal("pasto_arrivo"),
                 pasto_partenza: soloPranzoCun ? "nessuno" : getVal("pasto_partenza"),
                 flag_solo_pranzo_cun: soloPranzoCun,
+                flag_precun: soloPranzoCun ? false : getChecked("flag_precun"),
+                flag_campo_famiglie: soloPranzoCun ? false : getChecked("flag_campo_famiglie"),
+                flag_cun_fest: soloPranzoCun ? false : getChecked("flag_cun_fest"),
                 flag_bosco_domenica: boscoDomenica,
                 flag_cena_ristorante_domenica: cenaRistorante,
-                tipo_evento: getVal("tipo_evento") || "solo_cun",
                 note: getVal("note") || null,
-                fascia_prezzo: "Generale",
+                fascia_prezzo: "Altro",
             });
         });
 

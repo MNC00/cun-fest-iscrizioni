@@ -32,9 +32,11 @@ CREATE TABLE IF NOT EXISTS partecipanti (
     flag_solo_pranzo_cun BOOLEAN DEFAULT FALSE,
     flag_bosco_domenica BOOLEAN DEFAULT FALSE,
     flag_cena_ristorante_domenica BOOLEAN,
-    tipo_evento TEXT DEFAULT 'solo_cun', -- 'precun_cun' | 'campo_famiglie_cun' | 'solo_cun'
+    flag_precun BOOLEAN DEFAULT FALSE,
+    flag_campo_famiglie BOOLEAN DEFAULT FALSE,
+    flag_cun_fest BOOLEAN DEFAULT FALSE,
     note TEXT,
-    fascia_prezzo TEXT DEFAULT 'Generale',
+    fascia_prezzo TEXT DEFAULT 'Altro', -- 'Nord' | 'Altro'
     stato_iscrizione TEXT DEFAULT 'Inviata',
     token_annullamento TEXT UNIQUE,
     notti_calcolate INTEGER,
@@ -64,7 +66,8 @@ CREATE INDEX IF NOT EXISTS ix_pagamenti_partecipante_id ON pagamenti(partecipant
 
 CREATE TABLE IF NOT EXISTS tariffe (
     id SERIAL PRIMARY KEY,
-    fascia TEXT NOT NULL,           -- 'Generale', 'Uninord', 'Unisud'
+    tipo_evento TEXT NOT NULL,      -- 'precun' | 'campo_famiglie' | 'cun_fest' | 'pranzo_cun'
+    fascia TEXT,                    -- NULL = tariffa base dell'evento; 'Nord' | 'Altro' = override per fascia
     prezzo_notte NUMERIC,
     prezzo_colazione NUMERIC,
     prezzo_pranzo NUMERIC,
@@ -74,6 +77,13 @@ CREATE TABLE IF NOT EXISTS tariffe (
     valido_dal DATE,
     valido_al DATE,
     attivo BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS periodi_evento (
+    id SERIAL PRIMARY KEY,
+    tipo_evento TEXT NOT NULL UNIQUE, -- 'precun' | 'campo_famiglie' | 'cun_fest' | 'pranzo_cun'
+    data_inizio DATE,
+    data_fine DATE
 );
 
 CREATE TABLE IF NOT EXISTS operatori (

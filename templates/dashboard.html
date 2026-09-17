@@ -94,7 +94,7 @@
                             {% else %}
                             <ul class="list-unstyled mb-0">
                                 {% for p in famiglia.partecipanti %}
-                                {% if evento_corrente == 'tutti' or p.tipo_evento == evento_corrente %}
+                                {% if evento_corrente == 'tutti' or p[CAMPO_EVENTO[evento_corrente]] %}
                                 <li class="mb-2 pb-2 border-bottom">
                                     <div>
                                         {{ p.nome }} {{ p.cognome }}
@@ -104,7 +104,9 @@
                                     </div>
                                     <div class="small text-muted">
                                         Stato: {{ p.stato_iscrizione }}
-                                        · {{ TIPI_EVENTO_LABELS.get(p.tipo_evento, p.tipo_evento) }}
+                                        {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
+                                        {% if p[CAMPO_EVENTO[valore]] %}· {{ etichetta }}{% endif %}
+                                        {% endfor %}
                                         {% if p.prezzo_netto is not none %}
                                         · Prezzo netto: {{ "%.2f"|format(p.prezzo_netto) }} €
                                         {% endif %}

@@ -15,6 +15,14 @@ TRUNCATE TABLE partecipanti, pagamenti, famiglie, log_eventi
 --    Andranno reinserite quando note (vedi sql/seed_tariffe_esempio.sql).
 TRUNCATE TABLE tariffe RESTART IDENTITY;
 
+-- 2b) Periodi degli eventi (date valide per iscrizione/pranzo CUN): si
+--     azzerano e si ricreano vuoti, da valorizzare per la nuova edizione
+--     (vedi i commenti in sql/seed_tariffe_esempio.sql).
+TRUNCATE TABLE periodi_evento RESTART IDENTITY;
+INSERT INTO periodi_evento (tipo_evento, data_inizio, data_fine)
+VALUES ('precun', NULL, NULL), ('campo_famiglie', NULL, NULL),
+       ('cun_fest', NULL, NULL), ('pranzo_cun', NULL, NULL);
+
 -- 3) Operatori: NON vengono toccati di default (lo staff spesso è lo stesso
 --    tra un'edizione e l'altra). Se invece si vuole ripartire anche da zero
 --    con gli account operatore, scommentare la riga seguente:

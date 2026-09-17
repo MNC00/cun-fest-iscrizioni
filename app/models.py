@@ -47,11 +47,13 @@ class Partecipante(Base):
     pasto_arrivo = Column(String)
     pasto_partenza = Column(String)
     flag_solo_pranzo_cun = Column(Boolean, default=False)
+    flag_precun = Column(Boolean, default=False)
+    flag_campo_famiglie = Column(Boolean, default=False)
+    flag_cun_fest = Column(Boolean, default=False)
     flag_bosco_domenica = Column(Boolean, default=False)
     flag_cena_ristorante_domenica = Column(Boolean)  # solo se flag_bosco_domenica; None = non applicabile
-    tipo_evento = Column(String, default="solo_cun")  # 'precun_cun' | 'campo_famiglie_cun' | 'solo_cun'
     note = Column(Text)
-    fascia_prezzo = Column(String, default="Generale")
+    fascia_prezzo = Column(String, default="Altro")  # 'Nord' | 'Altro'
     stato_iscrizione = Column(String, default="Inviata")
     token_annullamento = Column(String, unique=True, index=True)
     notti_calcolate = Column(Integer)
@@ -84,7 +86,8 @@ class Tariffa(Base):
     __tablename__ = "tariffe"
 
     id = Column(Integer, primary_key=True)
-    fascia = Column(String, nullable=False)
+    tipo_evento = Column(String, nullable=False)  # 'precun' | 'campo_famiglie' | 'cun_fest' | 'pranzo_cun'
+    fascia = Column(String)  # 'Nord' | 'Altro' | NULL = tariffa base dell'evento (tutte le fasce)
     prezzo_notte = Column(Numeric)
     prezzo_colazione = Column(Numeric)
     prezzo_pranzo = Column(Numeric)
@@ -94,6 +97,19 @@ class Tariffa(Base):
     valido_dal = Column(Date)
     valido_al = Column(Date)
     attivo = Column(Boolean, default=True)
+
+
+class PeriodoEvento(Base):
+    """Finestra di date di ciascun evento/componente (PreCunFest, Campo Famiglie,
+    CunFest, pranzo CUN), indipendente dalle tariffe. Il periodo valido per un
+    partecipante è l'unione dei periodi degli eventi a cui partecipa."""
+
+    __tablename__ = "periodi_evento"
+
+    id = Column(Integer, primary_key=True)
+    tipo_evento = Column(String, nullable=False, unique=True)  # 'precun' | 'campo_famiglie' | 'cun_fest' | 'pranzo_cun'
+    data_inizio = Column(Date)
+    data_fine = Column(Date)
 
 
 class Operatore(Base):

@@ -22,11 +22,13 @@ Se invece stai facendo una **installazione nuova** (nuovo progetto Supabase,
 mai avviato prima), esegui `sql/schema.sql` per creare tutte le tabelle da
 zero (è idempotente, può essere rieseguito senza rischi).
 
-## 2. Configura le tariffe della nuova edizione
+## 2. Configura le tariffe e i periodi della nuova edizione
 
 Quando i prezzi ufficiali sono noti, inseriscili in `tariffe` adattando
-`sql/seed_tariffe_esempio.sql` (fasce Generale/Uninord/Unisud, prezzi
-notte/pasti, tetto di spesa, sconto giovani, date di validità).
+`sql/seed_tariffe_esempio.sql`: una riga base per ciascun tipo di evento
+(`precun`, `campo_famiglie`, `cun_fest`, `pranzo_cun`, con `fascia = NULL`)
+più, solo se serve un prezzo diverso, righe di override con `fascia = 'Nord'`
+o `'Altro'`.
 
 **Sconto giovani — aggiorna `ANNO_RIFERIMENTO`:** in `app/calcolo.py` la
 costante `ANNO_RIFERIMENTO` (in cima al file) definisce l'anno rispetto al
@@ -35,21 +37,32 @@ quale si calcola l'età di un partecipante (`ANNO_RIFERIMENTO - anno di nascita
 a mano ad ogni edizione con l'anno del festival, altrimenti lo sconto verrà
 calcolato con l'età sbagliata.
 
-**Importante:** le colonne `valido_dal`/`valido_al` di `tariffe` non sono solo
-informative: l'app le usa anche per calcolare il periodo valido dell'evento
-(minimo di `valido_dal` e massimo di `valido_al` tra le tariffe attive) e
-rifiuta lato server le iscrizioni con data di arrivo/partenza fuori da
-quell'intervallo. È lo stesso periodo per tutti e tre i pacchetti
-(PreCunFest+CunFest, Campo Famiglie+CunFest, solo CunFest): assicurati che
-`valido_dal`/`valido_al` coprano l'intero arco dell'edizione (dal primo giorno
-del PreCunFest/Campo Famiglie all'ultimo giorno del CunFest).
+**Date dell'evento — tabella `periodi_evento`:** ogni riga (`precun`,
+`campo_famiglie`, `cun_fest`, `pranzo_cun`) ha una propria `data_inizio`/
+`data_fine`, indipendente dalle tariffe. L'app rifiuta lato server le
+iscrizioni con data di arrivo/partenza fuori dall'unione dei periodi degli
+eventi selezionati dal partecipante (es. chi fa PreCunFest+CunFest deve stare
+nell'unione dei due periodi). Per "Solo pranzo CUN" la data non viene chiesta
+all'utente: viene impostata automaticamente da `periodi_evento.pranzo_cun`
+(deve avere `data_inizio` valorizzata, `data_fine` opzionale se il pranzo dura
+un solo giorno). Aggiorna le date con:
+
+```sql
+UPDATE periodi_evento SET data_inizio = '2027-08-01', data_fine = '2027-08-03' WHERE tipo_evento = 'precun';
+UPDATE periodi_evento SET data_inizio = '2027-08-03', data_fine = '2027-08-10' WHERE tipo_evento = 'cun_fest';
+-- ecc. (vedi sql/seed_tariffe_esempio.sql per tutti gli esempi)
+```
+
+Finché una riga di `periodi_evento` ha le date a `NULL`, l'app non applica
+alcun vincolo sulle date per quell'evento (utile se apri le iscrizioni prima
+di aver deciso le date definitive) — eccetto per `pranzo_cun`, per cui la
+data è obbligatoria (senza di essa il calcolo del prezzo fallisce con errore
+esplicito).
 
 Se i prezzi non sono ancora noti al momento dell'apertura iscrizioni, non è
 un problema: l'app supporta iscrizioni con `tariffe` vuota (i prezzi restano
 `None` finché un operatore non lancia il ricalcolo da `/dashboard`, che invia
-automaticamente l'email di aggiornamento prezzo a tutti gli interessati); in
-tal caso però non viene applicato nessun vincolo sulle date, finché almeno una
-tariffa attiva non ha `valido_dal`/`valido_al` valorizzati.
+automaticamente l'email di aggiornamento prezzo a tutti gli interessati).
 
 ## 3. Account operatori
 
