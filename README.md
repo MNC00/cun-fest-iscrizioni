@@ -30,7 +30,12 @@ App su `http://127.0.0.1:8000`.
 
 ## Database
 
-Gli schemi sono gestiti a mano tramite script in `sql/`. Dopo aver clonato o aggiornato il progetto, esegui gli script mancanti nel SQL Editor di Supabase (es. `sql/create_pagamenti.sql`).
+Lo schema è definito in `sql/schema.sql` (idempotente, unica fonte di verità
+per una installazione nuova). Migrazioni incrementali successive sono in
+`sql/*.sql` con nome descrittivo, da eseguire nel SQL Editor di Supabase.
+
+Per il reset annuale (nuova edizione del festival) vedi
+[NUOVA_EDIZIONE.md](NUOVA_EDIZIONE.md).
 
 ## Funzionalità principali
 
@@ -43,5 +48,9 @@ Gli schemi sono gestiti a mano tramite script in `sql/`. Dopo aver clonato o agg
 - **Report pasti** (`/report-pasti`): conteggio giornaliero colazioni/pranzi/cene, export CSV.
 
 Ogni azione rilevante viene tracciata in `log_eventi`.
+
+## Script di supporto
+
+- `scripts/crea_operatore.py` — crea/aggiorna un account operatore (password, nome, stato attivo).
 
 Per i dettagli tecnici (modelli, moduli, flussi) vedi [ARCHITECTURE.md](ARCHITECTURE.md).
