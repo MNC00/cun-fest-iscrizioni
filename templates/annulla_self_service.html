@@ -52,7 +52,7 @@
                 <input type="hidden" name="azione" value="singola">
                 <h2 class="h6">Annulla solo {{ "la sua" if is_operatore else "la mia" }} iscrizione</h2>
 
-                {% if altri_partecipanti %}
+                {% if altri_partecipanti and is_referente %}
                 <p class="small text-muted">
                     Poiché nel nucleo restano altri iscritti, indica chi diventa il nuovo referente per le comunicazioni.
                 </p>
@@ -75,7 +75,7 @@
                 <button type="submit" class="btn btn-outline-danger">Annulla {{ "la sua sola" if is_operatore else "la mia sola" }} iscrizione</button>
             </form>
 
-            {% if altri_partecipanti %}
+            {% if altri_partecipanti and is_referente %}
             <form method="post" action="{{ form_action }}">
                 <input type="hidden" name="azione" value="nucleo">
                 <h2 class="h6">Annulla tutto il nucleo familiare</h2>

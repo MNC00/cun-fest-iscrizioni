@@ -449,6 +449,14 @@ def modifica_iscrizione_submit(
     return RedirectResponse(url="/dashboard?ok=1", status_code=303)
 
 
+def _e_referente(partecipante: Partecipante, famiglia: Famiglia) -> bool:
+    """True se il partecipante è il referente/responsabile registrato per la sua famiglia."""
+    return (
+        partecipante.nome.strip().lower() == (famiglia.referente_nome or "").strip().lower()
+        and partecipante.cognome.strip().lower() == (famiglia.referente_cognome or "").strip().lower()
+    )
+
+
 def _esegui_annullamento(
     db: Session,
     partecipante: Partecipante,
@@ -463,9 +471,16 @@ def _esegui_annullamento(
     """Esegue l'annullamento (singola o nucleo) di un'iscrizione, logga l'evento e
     invia la relativa email. Condivisa tra il flusso self-service e quello operatore.
 
+    L'annullamento dell'intero nucleo e la riassegnazione del referente sono
+    consentiti solo se il partecipante che avvia l'operazione è il referente
+    stesso del nucleo: un membro qualsiasi può annullare solo se stesso.
+
     Ritorna (ok, messaggio_errore). Se ok è False la transazione non è stata modificata.
     """
     if azione == "nucleo":
+        if not _e_referente(partecipante, famiglia):
+            return False, "Solo il referente del nucleo familiare può annullare l'intera iscrizione del nucleo."
+
         attivi = [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata"]
         nomi_annullati = []
         for p in attivi:
@@ -493,8 +508,9 @@ def _esegui_annullamento(
         altri_attivi = [
             p for p in famiglia.partecipanti if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
         ]
+        richiede_riassegnazione = altri_attivi and _e_referente(partecipante, famiglia)
 
-        if altri_attivi and not (nuovo_referente_nome and nuovo_referente_cognome and nuovo_referente_email):
+        if richiede_riassegnazione and not (nuovo_referente_nome and nuovo_referente_cognome and nuovo_referente_email):
             return False, (
                 "Dato che restano altri iscritti nel nucleo, indica nome, cognome ed email del "
                 "nuovo referente per il nucleo familiare."
@@ -511,7 +527,7 @@ def _esegui_annullamento(
             )
         )
 
-        if altri_attivi:
+        if richiede_riassegnazione:
             famiglia.referente_nome = nuovo_referente_nome
             famiglia.referente_cognome = nuovo_referente_cognome
             famiglia.email = nuovo_referente_email
@@ -577,6 +593,7 @@ def annulla_iscrizione_operatore_form(partecipante_id: int, request: Request, db
             "altri_partecipanti": altri_partecipanti,
             "gia_annullata": False,
             "is_operatore": True,
+            "is_referente": _e_referente(partecipante, partecipante.famiglia),
         },
     )
 
@@ -633,6 +650,7 @@ def annulla_iscrizione_operatore_submit(
                 "altri_partecipanti": altri_partecipanti,
                 "gia_annullata": False,
                 "is_operatore": True,
+                "is_referente": _e_referente(partecipante, famiglia),
                 "errore": errore,
             },
             status_code=400,
@@ -680,6 +698,7 @@ def annulla_self_service_form(token: str, request: Request, db: Session = Depend
             "partecipante": partecipante,
             "altri_partecipanti": altri_partecipanti,
             "gia_annullata": False,
+            "is_referente": _e_referente(partecipante, partecipante.famiglia),
         },
     )
 
@@ -731,6 +750,7 @@ def annulla_self_service_submit(
                 "partecipante": partecipante,
                 "altri_partecipanti": altri_partecipanti,
                 "gia_annullata": False,
+                "is_referente": _e_referente(partecipante, famiglia),
                 "errore": messaggio_errore,
             },
             status_code=400,
