@@ -11,7 +11,7 @@ app/
   schemas.py        Pydantic models per l'API di iscrizione
   calcolo.py        calcolo prezzo/pasti per partecipante
   pagamenti.py       sincronizzazione pagamento <-> prezzo
-  email_service.py  invio email via Brevo + builder HTML
+  email_service.py  invio email via SMTP Google + builder HTML
 templates/          viste Jinja2 (Bootstrap)
 static/             CSS/JS
 sql/                script SQL da applicare manualmente su Supabase
@@ -40,7 +40,7 @@ Da date arrivo/partenza + pasti dovuti + tariffa attiva della fascia → `prezzo
 Per ogni partecipante attivo, `calcola_pasti_per_giorno()` determina i pasti dovuti giorno per giorno (stessa logica del calcolo prezzo, a granularità giornaliera); i conteggi vengono aggregati sull'intero intervallo di date del festival.
 
 **Email** (`app/email_service.py`)
-Funzioni `costruisci_email_*` generano l'HTML, `invia_email()` chiama l'API Brevo (`/v3/smtp/email`). I casi d'uso (conferma iscrizione, aggiornamento prezzo, annullamento, comunicazione di massa) sono wrapper su queste due primitive. Errori di invio sollevano `EmailServiceError`, loggato ma senza bloccare l'operazione DB già commit-ata.
+Funzioni `costruisci_email_*` generano l'HTML, `invia_email()` invia via SMTP (smtplib, SSL) usando le credenziali Google (`SMTP_USER`/`SMTP_PASSWORD`, App Password). I casi d'uso (conferma iscrizione, aggiornamento prezzo, annullamento, comunicazione di massa) sono wrapper su queste due primitive. Errori di invio sollevano `EmailServiceError`, loggato ma senza bloccare l'operazione DB già commit-ata.
 
 **Autenticazione operatori** (`app/auth.py`)
 Password hashate con bcrypt. Sessione: token firmato (`itsdangerous`, scadenza 8h) salvato in cookie httponly. `get_current_operatore_username(request)` legge il cookie in ogni rotta protetta; se assente/non valido → redirect a `/login`.

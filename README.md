@@ -4,7 +4,7 @@ App FastAPI per la gestione delle iscrizioni al CUN Fest: form pubblico di iscri
 
 ## Stack
 
-Python 3, FastAPI, SQLAlchemy, PostgreSQL (Supabase), Jinja2 + Bootstrap, Brevo (email transazionali).
+Python 3, FastAPI, SQLAlchemy, PostgreSQL (Supabase), Jinja2 + Bootstrap, SMTP Google (email transazionali).
 
 ## Setup locale
 
@@ -24,8 +24,9 @@ App su `http://127.0.0.1:8000`.
 |---|---|
 | `DATABASE_URL` | Connection string PostgreSQL (Supabase) |
 | `SECRET_KEY` | Chiave per firmare i cookie di sessione operatore |
-| `BREVO_API_KEY` | API key Brevo per l'invio email |
-| `BREVO_SENDER_EMAIL` | Mittente delle email transazionali |
+| `SMTP_USER` | Indirizzo Gmail mittente, usato anche per il login SMTP |
+| `SMTP_PASSWORD` | Password per le app di Google (vedi https://myaccount.google.com/apppasswords) |
+| `SMTP_SENDER_EMAIL` | Facoltativa: mittente mostrato, se diverso da `SMTP_USER` |
 | `BASE_URL` | URL base dell'app (usato nei link email) |
 
 ## Database

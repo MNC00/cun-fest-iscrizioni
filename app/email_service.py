@@ -1,56 +1,62 @@
 import logging
 import os
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Iterable
-
-import httpx
 
 logger = logging.getLogger(__name__)
 
-BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
 
 
 class EmailServiceError(Exception):
-    """Errore applicativo nell'invio di una email tramite Brevo."""
+    """Errore applicativo nell'invio di una email tramite SMTP."""
 
 
 def invia_email(destinatario: str, oggetto: str, contenuto_html: str) -> None:
-    """Invia una email tramite le API transazionali di Brevo."""
-    api_key = os.getenv("BREVO_API_KEY")
-    sender_email = os.getenv("BREVO_SENDER_EMAIL")
+    """Invia una email tramite il servizio SMTP di Google (Gmail/Workspace).
 
-    if not api_key or not sender_email:
+    Richiede le variabili d'ambiente:
+    - SMTP_USER: indirizzo Gmail mittente, usato anche per l'autenticazione.
+    - SMTP_PASSWORD: password per le app di Google (non la password normale
+      dell'account: va generata da https://myaccount.google.com/apppasswords,
+      richiede la verifica in due passaggi attiva sull'account).
+    Facoltative:
+    - SMTP_SENDER_EMAIL: indirizzo mostrato come mittente, se diverso da SMTP_USER.
+    - SMTP_HOST / SMTP_PORT: default smtp.gmail.com:465 (SSL).
+    """
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    sender_email = os.getenv("SMTP_SENDER_EMAIL") or smtp_user
+
+    if not smtp_user or not smtp_password:
         raise EmailServiceError(
-            "BREVO_API_KEY e BREVO_SENDER_EMAIL devono essere configurate come variabili d'ambiente."
+            "SMTP_USER e SMTP_PASSWORD devono essere configurate come variabili d'ambiente."
         )
 
-    payload = {
-        "sender": {"email": sender_email},
-        "to": [{"email": destinatario}],
-        "subject": oggetto,
-        "htmlContent": contenuto_html,
-    }
-    headers = {
-        "accept": "application/json",
-        "api-key": api_key,
-        "content-type": "application/json",
-    }
+    messaggio = MIMEMultipart("alternative")
+    messaggio["Subject"] = oggetto
+    messaggio["From"] = sender_email
+    messaggio["To"] = destinatario
+    messaggio.attach(MIMEText(contenuto_html, "html", "utf-8"))
 
     try:
-        response = httpx.post(BREVO_API_URL, json=payload, headers=headers, timeout=10.0)
-        response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        logger.error(
-            "Errore Brevo nell'invio email a %s: status=%s body=%s",
-            destinatario,
-            exc.response.status_code,
-            exc.response.text,
-        )
+        contesto = ssl.create_default_context()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=contesto, timeout=10.0) as server:
+            server.login(smtp_user, smtp_password)
+            server.sendmail(sender_email, [destinatario], messaggio.as_string())
+    except smtplib.SMTPAuthenticationError as exc:
+        logger.error("Errore di autenticazione SMTP nell'invio email a %s: %s", destinatario, exc)
         raise EmailServiceError(
-            f"Invio email fallito ({exc.response.status_code}): {exc.response.text}"
+            "Invio email fallito: credenziali SMTP non valide (verifica SMTP_USER/SMTP_PASSWORD "
+            "e che sia stata usata una password per le app di Google)."
         ) from exc
-    except httpx.RequestError as exc:
-        logger.error("Errore di connessione a Brevo nell'invio email a %s: %s", destinatario, exc)
-        raise EmailServiceError(f"Invio email fallito: errore di connessione a Brevo ({exc})") from exc
+    except (smtplib.SMTPException, OSError) as exc:
+        logger.error("Errore SMTP nell'invio email a %s: %s", destinatario, exc)
+        raise EmailServiceError(f"Invio email fallito: errore SMTP ({exc})") from exc
 
     logger.info("Email inviata con successo a %s (oggetto: %s)", destinatario, oggetto)
 

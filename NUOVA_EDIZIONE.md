@@ -53,7 +53,7 @@ Verifica/aggiorna in `.env` (locale) e nelle Environment Variables di Render
 (produzione):
 
 - `BASE_URL` — se cambia il dominio dell'edizione.
-- `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` — se cambia il mittente ufficiale.
+- `SMTP_USER` / `SMTP_PASSWORD` / `SMTP_SENDER_EMAIL` — se cambia il mittente ufficiale.
 - `DATABASE_URL` / `SECRET_KEY` — di norma invariati tra edizioni.
 
 ## 5. Verifica finale
