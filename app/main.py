@@ -670,7 +670,14 @@ def pagamenti_lista(request: Request, stato: str = "tutti", db: Session = Depend
 
 
 @app.post("/pagamenti/segna-pagato/{pagamento_id}")
-def segna_pagamento_pagato(pagamento_id: int, request: Request, db: Session = Depends(get_db)):
+def segna_pagamento_pagato(
+    pagamento_id: int,
+    request: Request,
+    metodo: str = Form(...),
+    data_pagamento: date = Form(default_factory=date.today),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
@@ -681,7 +688,9 @@ def segna_pagamento_pagato(pagamento_id: int, request: Request, db: Session = De
 
     pagamento.importo_pagato = pagamento.importo_dovuto
     pagamento.stato = "Pagato"
-    pagamento.data_pagamento = date.today()
+    pagamento.data_pagamento = data_pagamento
+    pagamento.metodo = metodo
+    pagamento.note = note or None
 
     log = LogEvento(
         oggetto_tipo="pagamento",
@@ -691,12 +700,14 @@ def segna_pagamento_pagato(pagamento_id: int, request: Request, db: Session = De
         dettagli={
             "partecipante_id": pagamento.partecipante_id,
             "importo_pagato": float(pagamento.importo_pagato or 0),
+            "metodo": metodo,
         },
     )
     db.add(log)
     db.commit()
 
     return RedirectResponse(url="/pagamenti?ok=1", status_code=303)
+
 
 
 def _query_destinatari(db: Session, fascia: str, stato_iscrizione: str, zona_provenienza: str):
