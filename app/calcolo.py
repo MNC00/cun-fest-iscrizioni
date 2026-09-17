@@ -38,22 +38,45 @@ def componenti_selezionati(partecipante: Partecipante) -> list:
     ]
 
 
-def categoria_tariffa(partecipante: Partecipante) -> str:
-    """Determina quale tipo di evento governa il calcolo del prezzo quando un
-    partecipante seleziona più eventi atomici insieme (es. precun + cun_fest).
-
-    Semplificazione consapevole: non si dividono le notti/pasti per periodo di
-    ogni singolo evento, si usa un'unica tariffa "categoria" per l'intero
-    soggiorno, con priorità Campo Famiglie > PreCunFest > CunFest (i primi due
-    sono programmi più specifici quando presenti in combinazione con CunFest).
-    """
-    if partecipante.flag_solo_pranzo_cun:
-        return "pranzo_cun"
+def _componenti_ordinati_per_prezzo(partecipante: Partecipante) -> list:
+    """Ordina gli eventi selezionati dal partecipante per priorità di
+    assegnazione tariffaria: Campo Famiglie e PreCunFest sono programmi più
+    specifici di CunFest, quindi hanno la precedenza quando un giorno del
+    soggiorno ricade nei periodi di più eventi selezionati contemporaneamente
+    (o quando i periodi non sono configurati e non si può disambiguare per
+    data: vedi _categoria_per_giorno)."""
+    ordine = []
     if partecipante.flag_campo_famiglie:
-        return "campo_famiglie"
+        ordine.append("campo_famiglie")
     if partecipante.flag_precun:
-        return "precun"
-    return "cun_fest"
+        ordine.append("precun")
+    if partecipante.flag_cun_fest:
+        ordine.append("cun_fest")
+    return ordine
+
+
+def _mappa_periodi(db: Session) -> dict:
+    """Ritorna {tipo_evento: (data_inizio, data_fine)} per tutte le righe di periodi_evento."""
+    righe = db.query(PeriodoEvento).all()
+    return {r.tipo_evento: (r.data_inizio, r.data_fine) for r in righe}
+
+
+def _categoria_per_giorno(giorno: date, componenti: list, periodi: dict) -> str:
+    """Determina quale tariffa (per tipo di evento) si applica a un singolo
+    giorno del soggiorno di un partecipante iscritto a più eventi.
+
+    Controlla, in ordine di priorità (vedi _componenti_ordinati_per_prezzo),
+    quale evento selezionato ha un periodo configurato che copre quel giorno.
+    Se nessun periodo configurato copre il giorno (es. perché le date non
+    sono ancora state impostate in periodi_evento), ricade sul primo
+    componente selezionato: in questo caso il calcolo equivale a usare
+    un'unica tariffa "governante" per l'intero soggiorno, come comportamento
+    di transizione finché i periodi non sono valorizzati."""
+    for tipo in componenti:
+        inizio, fine = periodi.get(tipo, (None, None))
+        if inizio and fine and inizio <= giorno <= fine:
+            return tipo
+    return componenti[0] if componenti else "cun_fest"
 
 
 def ottieni_periodo_evento(db: Session, tipi_evento: list | None = None) -> tuple:
@@ -100,49 +123,6 @@ def _trova_tariffa(db: Session, tipo_evento: str, fascia: str) -> Tariffa:
         )
     return tariffa
 
-
-def _conta_pasti(partecipante: Partecipante) -> dict:
-    """Conta colazioni, pranzi e cene dovuti in base al soggiorno del partecipante."""
-    colazioni = pranzi = cene = 0
-
-    if partecipante.flag_solo_pranzo_cun:
-        # Solo pranzi: uno per ogni giorno tra arrivo e partenza (inclusi entrambi)
-        pranzi = (partecipante.data_partenza - partecipante.data_arrivo).days + 1
-        return {"colazioni": 0, "pranzi": pranzi, "cene": 0}
-
-    def incrementa(pasto: str):
-        nonlocal colazioni, pranzi, cene
-        if pasto == "colazione":
-            colazioni += 1
-        elif pasto == "pranzo":
-            pranzi += 1
-        elif pasto == "cena":
-            cene += 1
-        # "nessuno", "dopo_cena", "prima_colazione" o valori non riconosciuti: nessun incremento.
-        # La notte del giorno di arrivo/partenza è già inclusa nel calcolo di "notti"
-        # (basato sulla differenza di date), quindi non serve alcuna notte aggiuntiva.
-
-    if partecipante.data_arrivo == partecipante.data_partenza:
-        # Stesso giorno: si applicano sia il pasto di arrivo che quello di partenza
-        incrementa(partecipante.pasto_arrivo)
-        incrementa(partecipante.pasto_partenza)
-        return {"colazioni": colazioni, "pranzi": pranzi, "cene": cene}
-
-    # Giorno di arrivo
-    incrementa(partecipante.pasto_arrivo)
-
-    # Giorni interni: colazione + pranzo + cena per ciascuno
-    giorno = partecipante.data_arrivo + timedelta(days=1)
-    while giorno < partecipante.data_partenza:
-        colazioni += 1
-        pranzi += 1
-        cene += 1
-        giorno += timedelta(days=1)
-
-    # Giorno di partenza
-    incrementa(partecipante.pasto_partenza)
-
-    return {"colazioni": colazioni, "pranzi": pranzi, "cene": cene}
 
 
 def _applica_tetto_e_sconto(prezzo_lordo: float, tariffa: Tariffa, partecipante: Partecipante) -> tuple:
@@ -224,6 +204,13 @@ def _calcola_prezzo_solo_pranzo_cun(partecipante: Partecipante, db: Session) -> 
 def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict:
     """Calcola notti, pasti e prezzo netto di un partecipante, aggiorna il DB e logga l'evento.
 
+    Il prezzo è sempre calcolato notte per notte e pasto per pasto: cambia solo
+    la tariffa applicata a ciascun giorno, in base a quale evento selezionato
+    (PreCunFest / Campo Famiglie / CunFest) copre quella data secondo i periodi
+    configurati in periodi_evento. Tetto di spesa e sconto giovani vengono
+    invece applicati una sola volta sul totale, usando la tariffa dell'evento
+    "principale" (stessa priorità Campo Famiglie > PreCunFest > CunFest).
+
     Ritorna un dizionario con tutti i valori calcolati.
     """
     if partecipante.flag_solo_pranzo_cun:
@@ -235,27 +222,63 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
     if partecipante.data_partenza < partecipante.data_arrivo:
         raise CalcoloPrezzoError("La data di partenza precede la data di arrivo.")
 
-    notti = (partecipante.data_partenza - partecipante.data_arrivo).days
+    componenti = _componenti_ordinati_per_prezzo(partecipante)
+    if not componenti:
+        raise CalcoloPrezzoError("Il partecipante non ha selezionato alcun evento.")
+
+    periodi = _mappa_periodi(db)
+
+    # Una notte per ogni giorno tra arrivo (incluso) e partenza (escluso).
+    notti_giorni = []
+    giorno = partecipante.data_arrivo
+    while giorno < partecipante.data_partenza:
+        notti_giorni.append(giorno)
+        giorno += timedelta(days=1)
+
     if partecipante.flag_bosco_domenica:
         # Chi partecipa solo a "Parliamone" del lunedì arriva la domenica sera
         # per dormire a Bosco: notte aggiuntiva non coperta dall'intervallo
-        # arrivo/partenza dichiarato (che tipicamente indica solo il lunedì).
-        notti += 1
+        # arrivo/partenza dichiarato. Le si assegna la categoria del giorno di
+        # partenza (tipicamente il lunedì), assunzione semplificativa dato che
+        # non corrisponde a una data esplicita del soggiorno dichiarato.
+        notti_giorni.append(partecipante.data_partenza)
 
-    pasti = _conta_pasti(partecipante)
-    colazioni, pranzi, cene = pasti["colazioni"], pasti["pranzi"], pasti["cene"]
+    pasti_giorno = calcola_pasti_per_giorno(partecipante)
 
-    categoria = categoria_tariffa(partecipante)
-    tariffa = _trova_tariffa(db, categoria, partecipante.fascia_prezzo)
+    tariffe_cache: dict = {}
 
-    prezzo_lordo = (
-        notti * float(tariffa.prezzo_notte or 0)
-        + colazioni * float(tariffa.prezzo_colazione or 0)
-        + pranzi * float(tariffa.prezzo_pranzo or 0)
-        + cene * float(tariffa.prezzo_cena or 0)
-    )
+    def ottieni_tariffa(categoria: str) -> Tariffa:
+        if categoria not in tariffe_cache:
+            tariffe_cache[categoria] = _trova_tariffa(db, categoria, partecipante.fascia_prezzo)
+        return tariffe_cache[categoria]
 
-    prezzo_lordo, sconto_eta, eta = _applica_tetto_e_sconto(prezzo_lordo, tariffa, partecipante)
+    prezzo_lordo = 0.0
+    notti_per_categoria: dict = {}
+    for giorno_notte in notti_giorni:
+        categoria = _categoria_per_giorno(giorno_notte, componenti, periodi)
+        tariffa = ottieni_tariffa(categoria)
+        prezzo_lordo += float(tariffa.prezzo_notte or 0)
+        notti_per_categoria[categoria] = notti_per_categoria.get(categoria, 0) + 1
+
+    colazioni = pranzi = cene = 0
+    for giorno_pasto, pasti in pasti_giorno.items():
+        categoria = _categoria_per_giorno(giorno_pasto, componenti, periodi)
+        tariffa = ottieni_tariffa(categoria)
+        if pasti["colazione"]:
+            prezzo_lordo += float(tariffa.prezzo_colazione or 0)
+            colazioni += 1
+        if pasti["pranzo"]:
+            prezzo_lordo += float(tariffa.prezzo_pranzo or 0)
+            pranzi += 1
+        if pasti["cena"]:
+            prezzo_lordo += float(tariffa.prezzo_cena or 0)
+            cene += 1
+
+    notti = len(notti_giorni)
+
+    categoria_principale = componenti[0]
+    tariffa_principale = ottieni_tariffa(categoria_principale)
+    prezzo_lordo, sconto_eta, eta = _applica_tetto_e_sconto(prezzo_lordo, tariffa_principale, partecipante)
     prezzo_netto = prezzo_lordo - sconto_eta
 
     dettagli = {
@@ -264,8 +287,9 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
         "pranzi": pranzi,
         "cene": cene,
         "fascia_prezzo": partecipante.fascia_prezzo,
-        "tipo_evento_tariffa": categoria,
-        "tariffa_id": tariffa.id,
+        "notti_per_categoria": notti_per_categoria,
+        "tipo_evento_tariffa_principale": categoria_principale,
+        "tariffa_id": tariffa_principale.id,
         "flag_solo_pranzo_cun": False,
         "eta": eta,
         "prezzo_lordo": prezzo_lordo,
@@ -279,7 +303,6 @@ def calcola_pasti_per_giorno(partecipante: Partecipante, db: Session = None) -> 
     """Calcola, giorno per giorno, quali pasti sono dovuti per un partecipante.
 
     Ritorna un dict {data: {"colazione": bool, "pranzo": bool, "cena": bool}}.
-    Riusa la stessa logica di _conta_pasti ma a granularità giornaliera.
     Il parametro db non è utilizzato nel calcolo, è mantenuto per coerenza
     con le altre funzioni che operano nel contesto di una sessione.
     """

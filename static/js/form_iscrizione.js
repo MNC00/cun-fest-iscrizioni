@@ -44,6 +44,12 @@ document.addEventListener("DOMContentLoaded", function () {
         const btnRimuovi = blocco.querySelector(".btn-rimuovi-partecipante");
         const inputDataArrivo = blocco.querySelector('[data-field="data_arrivo"]');
         const inputDataPartenza = blocco.querySelector('[data-field="data_partenza"]');
+        const notaDateEvento = blocco.querySelector(".nota-date-evento");
+
+        function formattaDataIt(isoDate) {
+            const [anno, mese, giorno] = isoDate.split("-");
+            return `${giorno}/${mese}/${anno}`;
+        }
 
         function aggiornaVincoliData() {
             if (!window.PERIODI_EVENTI) return;
@@ -65,7 +71,20 @@ document.addEventListener("DOMContentLoaded", function () {
             inputDataPartenza.min = dataMin || "";
             inputDataArrivo.max = dataMax || "";
             inputDataPartenza.max = dataMax || "";
+
+            if (notaDateEvento) {
+                if (dataMin && dataMax) {
+                    notaDateEvento.textContent =
+                        "Per gli eventi selezionati puoi inserire solo date comprese tra il " +
+                        formattaDataIt(dataMin) + " e il " + formattaDataIt(dataMax) + ".";
+                } else if (componenti.length > 0) {
+                    notaDateEvento.textContent = "";
+                } else {
+                    notaDateEvento.textContent = "Seleziona almeno un evento per vedere le date consentite.";
+                }
+            }
         }
+
 
         // PreCunFest e Campo Famiglie sono mutuamente esclusivi (si svolgono in contemporanea)
         if (checkPrecun && checkCampoFamiglie) {
