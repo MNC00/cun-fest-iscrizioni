@@ -19,6 +19,13 @@
     <div class="alert alert-success">Iscrizione modificata con successo.</div>
     {% endif %}
 
+    <form method="post" action="/ricalcola-prezzi-mancanti" class="mb-3"
+          onsubmit="return confirm('Ricalcolare il prezzo di tutti i partecipanti senza prezzo e inviare le email di aggiornamento?');">
+        <button type="submit" class="btn btn-warning">
+            Ricalcola tutti i prezzi mancanti e invia le email
+        </button>
+    </form>
+
     <div class="card shadow-sm">
         <div class="card-body">
             <h2 class="h5 mb-3">Famiglie e partecipanti</h2>
@@ -62,6 +69,9 @@
                                         · Prezzo netto: {{ "%.2f"|format(p.prezzo_netto) }} €
                                         {% endif %}
                                     </div>
+                                    {% if p.note %}
+                                    <div class="small text-muted fst-italic">Note: {{ p.note }}</div>
+                                    {% endif %}
                                     <div class="d-flex gap-2 mt-1">
                                         <a href="/modifica-iscrizione/{{ p.id }}" class="btn btn-sm btn-outline-secondary">
                                             Modifica

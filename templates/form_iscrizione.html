@@ -15,29 +15,53 @@
     <div id="alert-box"></div>
 
     <form id="form-iscrizione" novalidate>
+        <!-- Tipo di iscrizione -->
+        <div class="card mb-4">
+            <div class="card-header fw-bold">Tipo di iscrizione</div>
+            <div class="card-body">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="tipo_iscrizione" id="tipo-singola" value="singola" checked>
+                    <label class="form-check-label" for="tipo-singola">Iscrizione singola (una sola persona)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="tipo_iscrizione" id="tipo-famiglia" value="famiglia">
+                    <label class="form-check-label" for="tipo-famiglia">Nucleo familiare (più persone)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="tipo_iscrizione" id="tipo-estensione" value="estensione">
+                    <label class="form-check-label" for="tipo-estensione">Aggiungi persone a un nucleo già iscritto</label>
+                </div>
+            </div>
+        </div>
+
         <!-- Sezione Referente -->
         <div class="card mb-4">
             <div class="card-header fw-bold">Referente famiglia</div>
             <div class="card-body row g-3">
-                <div class="col-md-6">
+                <div class="col-md-6 campo-referente-nome">
                     <label class="form-label">Nome</label>
-                    <input type="text" class="form-control" name="referente_nome" required>
+                    <input type="text" class="form-control" name="referente_nome">
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6 campo-referente-nome">
                     <label class="form-label">Cognome</label>
-                    <input type="text" class="form-control" name="referente_cognome" required>
+                    <input type="text" class="form-control" name="referente_cognome">
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6 campo-referente-contatto">
                     <label class="form-label">Email</label>
                     <input type="email" class="form-control" name="referente_email" required>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6 campo-referente-contatto">
                     <label class="form-label">Telefono</label>
                     <input type="tel" class="form-control" name="referente_telefono">
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6 campo-referente-contatto">
                     <label class="form-label">Zona di provenienza</label>
                     <input type="text" class="form-control" name="referente_zona_provenienza">
+                </div>
+                <div class="col-md-6 d-none campo-famiglia-esistente">
+                    <label class="form-label">Email del nucleo già iscritto</label>
+                    <input type="email" class="form-control" name="famiglia_esistente_email">
+                    <div class="form-text">Inserisci l'email usata per la prima iscrizione della famiglia.</div>
                 </div>
             </div>
         </div>
@@ -102,6 +126,12 @@
                     <option value="pranzo">Pranzo</option>
                     <option value="cena">Cena</option>
                 </select>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" data-field="flag_arrivo_dopo_cena" id="dopo-cena-CHECK">
+                    <label class="form-check-label" for="dopo-cena-CHECK">
+                        Arrivo dopo cena (+1 notte, nessun pasto)
+                    </label>
+                </div>
             </div>
             <div class="col-md-6 campo-pasto">
                 <label class="form-label">Pasto partenza</label>
@@ -111,6 +141,12 @@
                     <option value="pranzo">Pranzo</option>
                     <option value="cena">Cena</option>
                 </select>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" data-field="flag_partenza_prima_colazione" id="prima-colazione-CHECK">
+                    <label class="form-check-label" for="prima-colazione-CHECK">
+                        Partenza prima di colazione (+1 notte, nessun pasto)
+                    </label>
+                </div>
             </div>
             <div class="col-md-6">
                 <div class="form-check">
@@ -132,6 +168,10 @@
                 <div class="alert alert-info d-none msg-parliamo-lunedi mb-0">
                     Info: la partecipazione è limitata all'incontro "Parliamone" del lunedì.
                 </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Note (preferenze stanza, restrizioni alimentari, altre comunicazioni)</label>
+                <textarea class="form-control" data-field="note" rows="2"></textarea>
             </div>
         </div>
     </div>

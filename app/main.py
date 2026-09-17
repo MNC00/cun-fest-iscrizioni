@@ -1,10 +1,12 @@
 from datetime import date, timedelta
+import logging
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import (
@@ -19,6 +21,8 @@ from app.email_service import (
     EmailServiceError,
     costruisci_email_annullamento,
     costruisci_email_massa,
+    invia_aggiornamento_prezzo,
+    invia_conferma_iscrizione,
     invia_email,
 )
 from app.models import Famiglia, LogEvento, Operatore, Pagamento, Partecipante, Tariffa
@@ -26,6 +30,8 @@ from app.pagamenti import sincronizza_pagamento
 from app.schemas import IscrizioneFamigliaRequest
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="CUN Fest Iscrizioni")
 
@@ -60,15 +66,28 @@ def test_db_models(db: Session = Depends(get_db)):
 @app.post("/iscriviti")
 def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db)):
     try:
-        famiglia = Famiglia(
-            referente_nome=payload.referente.nome,
-            referente_cognome=payload.referente.cognome,
-            email=payload.referente.email,
-            telefono=payload.referente.telefono,
-            zona_provenienza=payload.referente.zona_provenienza,
-        )
-        db.add(famiglia)
-        db.flush()  # ottiene famiglia.id prima del commit
+        if payload.famiglia_esistente_email:
+            famiglia = (
+                db.query(Famiglia)
+                .filter(func.lower(Famiglia.email) == payload.famiglia_esistente_email.lower())
+                .first()
+            )
+            if not famiglia:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Nessun nucleo familiare trovato con questa email. Verifica di aver "
+                    "inserito l'email usata nella prima iscrizione.",
+                )
+        else:
+            famiglia = Famiglia(
+                referente_nome=payload.referente.nome,
+                referente_cognome=payload.referente.cognome,
+                email=payload.referente.email,
+                telefono=payload.referente.telefono,
+                zona_provenienza=payload.referente.zona_provenienza,
+            )
+            db.add(famiglia)
+            db.flush()  # ottiene famiglia.id prima del commit
 
         partecipanti_ids = []
         for p in payload.partecipanti:
@@ -80,10 +99,13 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 zona_provenienza=p.zona_provenienza,
                 data_arrivo=p.data_arrivo,
                 data_partenza=p.data_partenza,
-                pasto_arrivo=p.pasto_arrivo,
-                pasto_partenza=p.pasto_partenza,
+                pasto_arrivo="nessuno" if p.flag_arrivo_dopo_cena else p.pasto_arrivo,
+                pasto_partenza="nessuno" if p.flag_partenza_prima_colazione else p.pasto_partenza,
                 flag_solo_pranzo_cun=p.flag_solo_pranzo_cun,
                 flag_parliamo_solo_lunedi=p.flag_parliamo_solo_lunedi,
+                flag_arrivo_dopo_cena=p.flag_arrivo_dopo_cena,
+                flag_partenza_prima_colazione=p.flag_partenza_prima_colazione,
+                note=p.note,
                 fascia_prezzo=p.fascia_prezzo,
             )
             db.add(partecipante)
@@ -93,11 +115,33 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
 
         db.commit()
 
+        try:
+            partecipanti_list = [
+                {
+                    "nome": p.nome,
+                    "cognome": p.cognome,
+                    "data_arrivo": p.data_arrivo.isoformat() if p.data_arrivo else "",
+                    "data_partenza": p.data_partenza.isoformat() if p.data_partenza else "",
+                }
+                for p in payload.partecipanti
+            ]
+            invia_conferma_iscrizione(
+                referente_nome=famiglia.referente_nome,
+                referente_cognome=famiglia.referente_cognome,
+                email=famiglia.email,
+                partecipanti_list=partecipanti_list,
+            )
+        except EmailServiceError as exc:
+            logger.error("Invio email di conferma fallito per famiglia %s: %s", famiglia.id, exc)
+
         return {
             "status": "ok",
             "famiglia_id": famiglia.id,
             "partecipanti_ids": partecipanti_ids,
         }
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -174,24 +218,105 @@ def dashboard(request: Request, msg: str | None = None, db: Session = Depends(ge
     )
 
 
+def _invia_email_aggiornamento_prezzo(partecipante: Partecipante, dettagli_calcolo: dict) -> None:
+    """Invia al referente l'email con il prezzo appena (ri)calcolato per il partecipante.
+
+    Chiamata solo a seguito di un'azione esplicita dell'operatore (ricalcolo o
+    modifica iscrizione). Un eventuale errore di invio viene solo loggato,
+    senza far fallire l'operazione di calcolo già commit-ata.
+    """
+    dettaglio_email = {
+        "notti": dettagli_calcolo.get("notti"),
+        "pasti": (
+            f"{dettagli_calcolo.get('colazioni', 0)} colazioni, "
+            f"{dettagli_calcolo.get('pranzi', 0)} pranzi, "
+            f"{dettagli_calcolo.get('cene', 0)} cene"
+        ),
+        "fascia": dettagli_calcolo.get("fascia_prezzo"),
+        "sconto": f"{dettagli_calcolo.get('sconto_eta', 0):.2f} €",
+    }
+
+    try:
+        invia_aggiornamento_prezzo(
+            email=partecipante.famiglia.email,
+            partecipante_nome=f"{partecipante.nome} {partecipante.cognome}",
+            prezzo_netto=dettagli_calcolo.get("prezzo_netto", 0),
+            dettaglio=dettaglio_email,
+        )
+    except EmailServiceError as exc:
+        logger.error(
+            "Invio email di aggiornamento prezzo fallito per partecipante %s: %s",
+            partecipante.id,
+            exc,
+        )
+
+
 @app.post("/ricalcola-prezzo/{partecipante_id}")
 def ricalcola_prezzo(partecipante_id: int, request: Request, db: Session = Depends(get_db)):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    partecipante = db.query(Partecipante).filter(Partecipante.id == partecipante_id).first()
+    partecipante = (
+        db.query(Partecipante)
+        .options(joinedload(Partecipante.famiglia))
+        .filter(Partecipante.id == partecipante_id)
+        .first()
+    )
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
     try:
-        calcola_prezzo_partecipante(partecipante, db)
+        dettagli_calcolo = calcola_prezzo_partecipante(partecipante, db)
         sincronizza_pagamento(partecipante, db)
         db.commit()
         msg = f"Prezzo ricalcolato per {partecipante.nome} {partecipante.cognome}."
+        _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo)
     except CalcoloPrezzoError as exc:
         db.rollback()
         msg = f"Errore nel calcolo: {exc}"
+
+    return RedirectResponse(url=f"/dashboard?msg={msg}", status_code=303)
+
+
+@app.post("/ricalcola-prezzi-mancanti")
+def ricalcola_prezzi_mancanti(request: Request, db: Session = Depends(get_db)):
+    """Ricalcola in un'unica azione tutti i partecipanti con prezzo non ancora calcolato.
+
+    Utile quando la tabella tariffe viene popolata dopo che alcuni partecipanti
+    si sono già iscritti: per ognuno di essi, se il calcolo va a buon fine,
+    invia anche l'email di aggiornamento prezzo.
+    """
+    username = get_current_operatore_username(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=303)
+
+    partecipanti = (
+        db.query(Partecipante)
+        .options(joinedload(Partecipante.famiglia))
+        .filter(
+            Partecipante.prezzo_netto.is_(None),
+            Partecipante.stato_iscrizione != "Annullata",
+        )
+        .all()
+    )
+
+    calcolati = 0
+    falliti = 0
+    for partecipante in partecipanti:
+        try:
+            dettagli_calcolo = calcola_prezzo_partecipante(partecipante, db)
+            sincronizza_pagamento(partecipante, db)
+            db.commit()
+            calcolati += 1
+            _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo)
+        except CalcoloPrezzoError:
+            db.rollback()
+            falliti += 1
+
+    msg = f"Ricalcolati {calcolati} prezzi e inviate le relative email."
+    if falliti:
+        msg += f" {falliti} partecipanti non calcolabili (tariffa mancante)."
 
     return RedirectResponse(url=f"/dashboard?msg={msg}", status_code=303)
 
@@ -230,18 +355,26 @@ def modifica_iscrizione_submit(
     request: Request,
     data_arrivo: date = Form(...),
     data_partenza: date = Form(...),
-    pasto_arrivo: str = Form(...),
-    pasto_partenza: str = Form(...),
+    pasto_arrivo: str = Form("nessuno"),
+    pasto_partenza: str = Form("nessuno"),
     fascia_prezzo: str = Form(...),
+    note: str = Form(""),
     flag_solo_pranzo_cun: str | None = Form(None),
     flag_parliamo_solo_lunedi: str | None = Form(None),
+    flag_arrivo_dopo_cena: str | None = Form(None),
+    flag_partenza_prima_colazione: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    partecipante = db.query(Partecipante).filter(Partecipante.id == partecipante_id).first()
+    partecipante = (
+        db.query(Partecipante)
+        .options(joinedload(Partecipante.famiglia))
+        .filter(Partecipante.id == partecipante_id)
+        .first()
+    )
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
@@ -252,19 +385,26 @@ def modifica_iscrizione_submit(
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
         "flag_parliamo_solo_lunedi": partecipante.flag_parliamo_solo_lunedi,
+        "flag_arrivo_dopo_cena": partecipante.flag_arrivo_dopo_cena,
+        "flag_partenza_prima_colazione": partecipante.flag_partenza_prima_colazione,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 
     partecipante.data_arrivo = data_arrivo
     partecipante.data_partenza = data_partenza
-    partecipante.pasto_arrivo = pasto_arrivo
-    partecipante.pasto_partenza = pasto_partenza
+    partecipante.flag_arrivo_dopo_cena = flag_arrivo_dopo_cena is not None
+    partecipante.flag_partenza_prima_colazione = flag_partenza_prima_colazione is not None
+    partecipante.pasto_arrivo = "nessuno" if partecipante.flag_arrivo_dopo_cena else pasto_arrivo
+    partecipante.pasto_partenza = (
+        "nessuno" if partecipante.flag_partenza_prima_colazione else pasto_partenza
+    )
     partecipante.fascia_prezzo = fascia_prezzo
+    partecipante.note = note or None
     partecipante.flag_solo_pranzo_cun = flag_solo_pranzo_cun is not None
     partecipante.flag_parliamo_solo_lunedi = flag_parliamo_solo_lunedi is not None
 
     try:
-        calcola_prezzo_partecipante(partecipante, db)
+        dettagli_calcolo = calcola_prezzo_partecipante(partecipante, db)
         sincronizza_pagamento(partecipante, db)
     except CalcoloPrezzoError as exc:
         db.rollback()
@@ -279,6 +419,8 @@ def modifica_iscrizione_submit(
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
         "flag_parliamo_solo_lunedi": partecipante.flag_parliamo_solo_lunedi,
+        "flag_arrivo_dopo_cena": partecipante.flag_arrivo_dopo_cena,
+        "flag_partenza_prima_colazione": partecipante.flag_partenza_prima_colazione,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 
@@ -291,6 +433,8 @@ def modifica_iscrizione_submit(
     )
     db.add(log)
     db.commit()
+
+    _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo)
 
     return RedirectResponse(url="/dashboard?ok=1", status_code=303)
 

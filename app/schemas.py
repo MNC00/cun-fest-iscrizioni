@@ -1,7 +1,7 @@
 from datetime import date
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 
 
 class ReferenteRequest(BaseModel):
@@ -23,9 +23,25 @@ class PartecipanteRequest(BaseModel):
     pasto_partenza: Optional[str] = None
     flag_solo_pranzo_cun: bool = False
     flag_parliamo_solo_lunedi: bool = False
+    flag_arrivo_dopo_cena: bool = False
+    flag_partenza_prima_colazione: bool = False
+    note: Optional[str] = None
     fascia_prezzo: str = "Generale"
 
 
 class IscrizioneFamigliaRequest(BaseModel):
-    referente: ReferenteRequest
+    referente: Optional[ReferenteRequest] = None
+    famiglia_esistente_email: Optional[EmailStr] = None
     partecipanti: List[PartecipanteRequest]
+
+    @model_validator(mode="after")
+    def valida_referente_o_famiglia_esistente(self) -> "IscrizioneFamigliaRequest":
+        if not self.referente and not self.famiglia_esistente_email:
+            raise ValueError(
+                "Specificare i dati del referente oppure l'email di un nucleo familiare già iscritto."
+            )
+        if self.referente and self.famiglia_esistente_email:
+            raise ValueError(
+                "Specificare solo uno tra i dati del referente e l'email del nucleo familiare esistente."
+            )
+        return self

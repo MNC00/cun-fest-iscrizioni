@@ -32,17 +32,25 @@ document.addEventListener("DOMContentLoaded", function () {
 
         const checkSoloPranzo = blocco.querySelector('[data-field="flag_solo_pranzo_cun"]');
         const checkParliamoLunedi = blocco.querySelector('[data-field="flag_parliamo_solo_lunedi"]');
+        const checkDopoCena = blocco.querySelector('[data-field="flag_arrivo_dopo_cena"]');
+        const checkPrimaColazione = blocco.querySelector('[data-field="flag_partenza_prima_colazione"]');
+        const selectPastoArrivo = blocco.querySelector('[data-field="pasto_arrivo"]');
+        const selectPastoPartenza = blocco.querySelector('[data-field="pasto_partenza"]');
         const campiPasto = blocco.querySelectorAll(".campo-pasto");
         const msgParliamoLunedi = blocco.querySelector(".msg-parliamo-lunedi");
         const btnRimuovi = blocco.querySelector(".btn-rimuovi-partecipante");
 
-        checkSoloPranzo.addEventListener("change", function () {
+        function aggiornaStatoPasti() {
             campiPasto.forEach((campo) => {
-                const select = campo.querySelector("select");
                 campo.classList.toggle("d-none", checkSoloPranzo.checked);
-                select.disabled = checkSoloPranzo.checked;
             });
-        });
+            selectPastoArrivo.disabled = checkSoloPranzo.checked || checkDopoCena.checked;
+            selectPastoPartenza.disabled = checkSoloPranzo.checked || checkPrimaColazione.checked;
+        }
+
+        checkSoloPranzo.addEventListener("change", aggiornaStatoPasti);
+        checkDopoCena.addEventListener("change", aggiornaStatoPasti);
+        checkPrimaColazione.addEventListener("change", aggiornaStatoPasti);
 
         checkParliamoLunedi.addEventListener("change", function () {
             msgParliamoLunedi.classList.toggle("d-none", !checkParliamoLunedi.checked);
@@ -61,6 +69,46 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Aggiunge un primo partecipante di default
     aggiungiPartecipante();
+
+    // --- Gestione tipo di iscrizione (singola / famiglia / estensione) ---
+    const radioTipoIscrizione = document.querySelectorAll('input[name="tipo_iscrizione"]');
+    const campiReferenteNome = document.querySelectorAll(".campo-referente-nome");
+    const campiReferenteContatto = document.querySelectorAll(".campo-referente-contatto");
+    const campoFamigliaEsistente = document.querySelector(".campo-famiglia-esistente");
+    const inputFamigliaEsistente = campoFamigliaEsistente.querySelector("input");
+    const inputReferenteEmail = document.querySelector('input[name="referente_email"]');
+
+    function getTipoIscrizione() {
+        const scelto = document.querySelector('input[name="tipo_iscrizione"]:checked');
+        return scelto ? scelto.value : "singola";
+    }
+
+    function aggiornaTipoIscrizione() {
+        const tipo = getTipoIscrizione();
+
+        campiReferenteNome.forEach((el) => el.classList.toggle("d-none", tipo !== "famiglia"));
+        campiReferenteContatto.forEach((el) => el.classList.toggle("d-none", tipo === "estensione"));
+        campoFamigliaEsistente.classList.toggle("d-none", tipo !== "estensione");
+
+        inputFamigliaEsistente.required = tipo === "estensione";
+        inputReferenteEmail.required = tipo !== "estensione";
+
+        btnAggiungi.classList.toggle("d-none", tipo === "singola");
+
+        if (tipo === "singola") {
+            const blocchi = container.querySelectorAll(".partecipante-block");
+            blocchi.forEach((blocco, idx) => {
+                if (idx > 0) blocco.remove();
+            });
+            if (container.querySelectorAll(".partecipante-block").length === 0) {
+                aggiungiPartecipante();
+            }
+            aggiornaIndici();
+        }
+    }
+
+    radioTipoIscrizione.forEach((radio) => radio.addEventListener("change", aggiornaTipoIscrizione));
+    aggiornaTipoIscrizione();
 
     function mostraAlert(tipo, messaggio) {
         alertBox.innerHTML =
@@ -82,6 +130,8 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             const soloPranzoCun = getChecked("flag_solo_pranzo_cun");
+            const dopoCena = getChecked("flag_arrivo_dopo_cena");
+            const primaColazione = getChecked("flag_partenza_prima_colazione");
 
             partecipanti.push({
                 nome: getVal("nome"),
@@ -90,10 +140,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 zona_provenienza: getVal("zona_provenienza") || null,
                 data_arrivo: getVal("data_arrivo") || null,
                 data_partenza: getVal("data_partenza") || null,
-                pasto_arrivo: soloPranzoCun ? "nessuno" : getVal("pasto_arrivo"),
-                pasto_partenza: soloPranzoCun ? "nessuno" : getVal("pasto_partenza"),
+                pasto_arrivo: soloPranzoCun || dopoCena ? "nessuno" : getVal("pasto_arrivo"),
+                pasto_partenza: soloPranzoCun || primaColazione ? "nessuno" : getVal("pasto_partenza"),
                 flag_solo_pranzo_cun: soloPranzoCun,
                 flag_parliamo_solo_lunedi: getChecked("flag_parliamo_solo_lunedi"),
+                flag_arrivo_dopo_cena: dopoCena,
+                flag_partenza_prima_colazione: primaColazione,
+                note: getVal("note") || null,
                 fascia_prezzo: "Generale",
             });
         });
@@ -114,15 +167,21 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         const payload = {
-            referente: {
-                nome: formData.get("referente_nome"),
-                cognome: formData.get("referente_cognome"),
+            partecipanti: partecipanti,
+        };
+
+        const tipo = getTipoIscrizione();
+        if (tipo === "estensione") {
+            payload.famiglia_esistente_email = formData.get("famiglia_esistente_email");
+        } else {
+            payload.referente = {
+                nome: tipo === "singola" ? partecipanti[0].nome : formData.get("referente_nome"),
+                cognome: tipo === "singola" ? partecipanti[0].cognome : formData.get("referente_cognome"),
                 email: formData.get("referente_email"),
                 telefono: formData.get("referente_telefono") || null,
                 zona_provenienza: formData.get("referente_zona_provenienza") || null,
-            },
-            partecipanti: partecipanti,
-        };
+            };
+        }
 
         const submitBtn = form.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
@@ -148,6 +207,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     container.innerHTML = "";
                     partecipanteCounter = 0;
                     aggiungiPartecipante();
+                    aggiornaTipoIscrizione();
                 } else {
                     const dettaglio = data.detail || "Errore durante l'invio dell'iscrizione.";
                     mostraAlert("danger", "Errore: " + dettaglio);
