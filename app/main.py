@@ -123,6 +123,7 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 nome=p.nome,
                 cognome=p.cognome,
                 data_nascita=p.data_nascita,
+                luogo_nascita=p.luogo_nascita,
                 zona_provenienza=p.zona_provenienza,
                 data_arrivo=p.data_arrivo,
                 data_partenza=p.data_partenza,

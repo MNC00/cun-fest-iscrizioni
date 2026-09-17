@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS partecipanti (
     nome TEXT NOT NULL,
     cognome TEXT NOT NULL,
     data_nascita DATE,
+    luogo_nascita TEXT,
     zona_provenienza TEXT,
     data_arrivo DATE,
     data_partenza DATE,

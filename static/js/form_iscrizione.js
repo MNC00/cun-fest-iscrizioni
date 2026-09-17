@@ -162,6 +162,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 nome: getVal("nome"),
                 cognome: getVal("cognome"),
                 data_nascita: getVal("data_nascita") || null,
+                luogo_nascita: getVal("luogo_nascita") || null,
                 zona_provenienza: getVal("zona_provenienza") || null,
                 data_arrivo: getVal("data_arrivo") || null,
                 data_partenza: getVal("data_partenza") || null,

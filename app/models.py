@@ -40,6 +40,7 @@ class Partecipante(Base):
     nome = Column(String, nullable=False)
     cognome = Column(String, nullable=False)
     data_nascita = Column(Date)
+    luogo_nascita = Column(String)
     zona_provenienza = Column(String)
     data_arrivo = Column(Date)
     data_partenza = Column(Date)

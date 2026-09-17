@@ -16,6 +16,7 @@ class PartecipanteRequest(BaseModel):
     nome: str
     cognome: str
     data_nascita: Optional[date] = None
+    luogo_nascita: Optional[str] = None
     zona_provenienza: Optional[str] = None
     data_arrivo: Optional[date] = None
     data_partenza: Optional[date] = None
