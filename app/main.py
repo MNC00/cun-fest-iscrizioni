@@ -17,7 +17,12 @@ from app.auth import (
     get_current_operatore_username,
     verify_password,
 )
-from app.calcolo import CalcoloPrezzoError, calcola_prezzo_partecipante, genera_report_pasti
+from app.calcolo import (
+    CalcoloPrezzoError,
+    calcola_prezzo_partecipante,
+    genera_report_pasti,
+    ottieni_periodo_evento,
+)
 from app.database import get_db
 from app.email_service import (
     EmailServiceError,
@@ -41,6 +46,13 @@ app = FastAPI(title="CUN Fest Iscrizioni")
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+TIPI_EVENTO_LABELS = {
+    "precun_cun": "PreCunFest + CunFest",
+    "campo_famiglie_cun": "Campo Famiglie + CunFest",
+    "solo_cun": "Solo CunFest",
+}
+templates.env.globals["TIPI_EVENTO_LABELS"] = TIPI_EVENTO_LABELS
 
 
 def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
@@ -75,11 +87,16 @@ def read_root(request: Request):
 
 
 @app.get("/iscriviti")
-def form_iscrizione(request: Request):
+def form_iscrizione(request: Request, db: Session = Depends(get_db)):
+    data_min, data_max = ottieni_periodo_evento(db)
     return templates.TemplateResponse(
         request=request,
         name="form_iscrizione.html",
-        context={"title": "Iscrizione CUN Fest"},
+        context={
+            "title": "Iscrizione CUN Fest",
+            "data_min_evento": data_min.isoformat() if data_min else None,
+            "data_max_evento": data_max.isoformat() if data_max else None,
+        },
     )
 
 
@@ -92,6 +109,20 @@ def test_db_models(db: Session = Depends(get_db)):
 @app.post("/iscriviti")
 def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db)):
     try:
+        data_min, data_max = ottieni_periodo_evento(db)
+        if data_min and data_max:
+            for p in payload.partecipanti:
+                for etichetta, valore in (("arrivo", p.data_arrivo), ("partenza", p.data_partenza)):
+                    if valore and (valore < data_min or valore > data_max):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"La data di {etichetta} di {p.nome} {p.cognome} "
+                                f"({valore.strftime('%d/%m/%Y')}) è fuori dal periodo dell'evento "
+                                f"({data_min.strftime('%d/%m/%Y')} - {data_max.strftime('%d/%m/%Y')})."
+                            ),
+                        )
+
         if payload.famiglia_esistente_email:
             famiglia = (
                 db.query(Famiglia)
@@ -130,7 +161,9 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 pasto_arrivo=p.pasto_arrivo,
                 pasto_partenza=p.pasto_partenza,
                 flag_solo_pranzo_cun=p.flag_solo_pranzo_cun,
-                flag_parliamo_solo_lunedi=p.flag_parliamo_solo_lunedi,
+                flag_bosco_domenica=p.flag_bosco_domenica,
+                flag_cena_ristorante_domenica=p.flag_cena_ristorante_domenica,
+                tipo_evento=p.tipo_evento,
                 note=p.note,
                 fascia_prezzo=p.fascia_prezzo,
                 token_annullamento=uuid.uuid4().hex,
@@ -140,6 +173,7 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
             sincronizza_pagamento(partecipante, db)
             partecipanti_ids.append(partecipante.id)
             partecipanti_creati.append(partecipante)
+
 
         db.commit()
 
@@ -214,7 +248,12 @@ def logout():
 
 
 @app.get("/dashboard")
-def dashboard(request: Request, msg: str | None = None, db: Session = Depends(get_db)):
+def dashboard(
+    request: Request,
+    msg: str | None = None,
+    evento: str = "tutti",
+    db: Session = Depends(get_db),
+):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
@@ -228,13 +267,25 @@ def dashboard(request: Request, msg: str | None = None, db: Session = Depends(ge
 
     # Statistiche: un nucleo familiare con un solo membro attivo è una "iscrizione
     # singola", non va conteggiato come famiglia nelle statistiche (nucleo = famiglia
-    # con più di un partecipante attivo).
+    # con più di un partecipante attivo). Il filtro per evento (PreCunFest/Campo
+    # Famiglie/solo CunFest) è per partecipante: una famiglia resta visibile se ha
+    # almeno un partecipante del pacchetto selezionato.
+    def _match_evento(p: Partecipante) -> bool:
+        return evento == "tutti" or p.tipo_evento == evento
+
     attivi_per_famiglia = [
-        [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata"] for famiglia in famiglie
+        [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata" and _match_evento(p)]
+        for famiglia in famiglie
     ]
     totale_partecipanti = sum(len(attivi) for attivi in attivi_per_famiglia)
     nuclei_familiari = sum(1 for attivi in attivi_per_famiglia if len(attivi) > 1)
     iscritti_singoli = sum(1 for attivi in attivi_per_famiglia if len(attivi) == 1)
+
+    famiglie_filtrate = [
+        famiglia
+        for famiglia, attivi in zip(famiglie, attivi_per_famiglia)
+        if evento == "tutti" or any(_match_evento(p) for p in famiglia.partecipanti)
+    ]
 
     return templates.TemplateResponse(
         request=request,
@@ -242,11 +293,12 @@ def dashboard(request: Request, msg: str | None = None, db: Session = Depends(ge
         context={
             "title": "Dashboard operatori",
             "username": username,
-            "famiglie": famiglie,
+            "famiglie": famiglie_filtrate,
             "msg": msg,
             "totale_partecipanti": totale_partecipanti,
             "nuclei_familiari": nuclei_familiari,
             "iscritti_singoli": iscritti_singoli,
+            "evento_corrente": evento,
         },
     )
 
@@ -358,6 +410,8 @@ def modifica_iscrizione_form(
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
+    data_min, data_max = ottieni_periodo_evento(db)
+
     return templates.TemplateResponse(
         request=request,
         name="modifica_iscrizione.html",
@@ -365,6 +419,8 @@ def modifica_iscrizione_form(
             "title": "Modifica iscrizione",
             "username": username,
             "partecipante": partecipante,
+            "data_min_evento": data_min.isoformat() if data_min else None,
+            "data_max_evento": data_max.isoformat() if data_max else None,
         },
     )
 
@@ -378,9 +434,11 @@ def modifica_iscrizione_submit(
     pasto_arrivo: str = Form("nessuno"),
     pasto_partenza: str = Form("nessuno"),
     fascia_prezzo: str = Form(...),
+    tipo_evento: str = Form("solo_cun"),
     note: str = Form(""),
     flag_solo_pranzo_cun: str | None = Form(None),
-    flag_parliamo_solo_lunedi: str | None = Form(None),
+    flag_bosco_domenica: str | None = Form(None),
+    flag_cena_ristorante_domenica: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
     username = get_current_operatore_username(request)
@@ -396,13 +454,26 @@ def modifica_iscrizione_submit(
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
+    data_min, data_max = ottieni_periodo_evento(db)
+    if data_min and data_max:
+        for etichetta, valore in (("arrivo", data_arrivo), ("partenza", data_partenza)):
+            if valore < data_min or valore > data_max:
+                return RedirectResponse(
+                    url=(
+                        f"/modifica-iscrizione/{partecipante_id}?errore="
+                        f"Data di {etichetta} fuori dal periodo dell'evento "
+                        f"({data_min.strftime('%d/%m/%Y')} - {data_max.strftime('%d/%m/%Y')})."
+                    ),
+                    status_code=303,
+                )
+
     valori_precedenti = {
         "data_arrivo": partecipante.data_arrivo.isoformat() if partecipante.data_arrivo else None,
         "data_partenza": partecipante.data_partenza.isoformat() if partecipante.data_partenza else None,
         "pasto_arrivo": partecipante.pasto_arrivo,
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
-        "flag_parliamo_solo_lunedi": partecipante.flag_parliamo_solo_lunedi,
+        "flag_bosco_domenica": partecipante.flag_bosco_domenica,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 
@@ -411,9 +482,13 @@ def modifica_iscrizione_submit(
     partecipante.pasto_arrivo = pasto_arrivo
     partecipante.pasto_partenza = pasto_partenza
     partecipante.fascia_prezzo = fascia_prezzo
+    partecipante.tipo_evento = tipo_evento
     partecipante.note = note or None
     partecipante.flag_solo_pranzo_cun = flag_solo_pranzo_cun is not None
-    partecipante.flag_parliamo_solo_lunedi = flag_parliamo_solo_lunedi is not None
+    partecipante.flag_bosco_domenica = flag_bosco_domenica is not None
+    partecipante.flag_cena_ristorante_domenica = (
+        (flag_cena_ristorante_domenica == "true") if partecipante.flag_bosco_domenica else None
+    )
 
     try:
         dettagli_calcolo = calcola_prezzo_partecipante(partecipante, db)
@@ -430,7 +505,7 @@ def modifica_iscrizione_submit(
         "pasto_arrivo": partecipante.pasto_arrivo,
         "pasto_partenza": partecipante.pasto_partenza,
         "flag_solo_pranzo_cun": partecipante.flag_solo_pranzo_cun,
-        "flag_parliamo_solo_lunedi": partecipante.flag_parliamo_solo_lunedi,
+        "flag_bosco_domenica": partecipante.flag_bosco_domenica,
         "fascia_prezzo": partecipante.fascia_prezzo,
     }
 
@@ -770,7 +845,12 @@ def annulla_self_service_submit(
 
 
 @app.get("/pagamenti")
-def pagamenti_lista(request: Request, stato: str = "tutti", db: Session = Depends(get_db)):
+def pagamenti_lista(
+    request: Request,
+    stato: str = "tutti",
+    evento: str = "tutti",
+    db: Session = Depends(get_db),
+):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
@@ -789,6 +869,9 @@ def pagamenti_lista(request: Request, stato: str = "tutti", db: Session = Depend
     elif stato == "pagati":
         query = query.filter(Pagamento.stato == "Pagato")
 
+    if evento != "tutti":
+        query = query.filter(Partecipante.tipo_evento == evento)
+
     pagamenti = query.order_by(Pagamento.id).all()
 
     return templates.TemplateResponse(
@@ -799,6 +882,7 @@ def pagamenti_lista(request: Request, stato: str = "tutti", db: Session = Depend
             "username": username,
             "pagamenti": pagamenti,
             "stato_filtro": stato,
+            "evento_corrente": evento,
         },
     )
 
@@ -844,7 +928,9 @@ def segna_pagamento_pagato(
 
 
 
-def _query_destinatari(db: Session, fascia: str, stato_iscrizione: str, zona_provenienza: str):
+def _query_destinatari(
+    db: Session, fascia: str, stato_iscrizione: str, zona_provenienza: str, tipo_evento: str = ""
+):
     """Costruisce la query dei partecipanti destinatari in base ai filtri di comunicazione."""
     query = db.query(Partecipante).join(Famiglia)
     if fascia:
@@ -853,6 +939,8 @@ def _query_destinatari(db: Session, fascia: str, stato_iscrizione: str, zona_pro
         query = query.filter(Partecipante.stato_iscrizione == stato_iscrizione)
     if zona_provenienza:
         query = query.filter(Partecipante.zona_provenienza.ilike(f"%{zona_provenienza}%"))
+    if tipo_evento:
+        query = query.filter(Partecipante.tipo_evento == tipo_evento)
     return query
 
 
@@ -862,7 +950,7 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    numero_destinatari = _query_destinatari(db, "", "", "").count()
+    numero_destinatari = _query_destinatari(db, "", "", "", "").count()
 
     return templates.TemplateResponse(
         request=request,
@@ -870,7 +958,7 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
         context={
             "title": "Comunicazioni",
             "username": username,
-            "filtri": {"fascia": "", "stato_iscrizione": "", "zona_provenienza": ""},
+            "filtri": {"fascia": "", "stato_iscrizione": "", "zona_provenienza": "", "tipo_evento": ""},
             "numero_destinatari": numero_destinatari,
             "oggetto": "",
             "testo_libero": "",
@@ -886,6 +974,7 @@ def comunicazioni_submit(
     fascia: str = Form(""),
     stato_iscrizione: str = Form(""),
     zona_provenienza: str = Form(""),
+    tipo_evento: str = Form(""),
     oggetto: str = Form(""),
     testo_libero: str = Form(""),
     db: Session = Depends(get_db),
@@ -898,9 +987,10 @@ def comunicazioni_submit(
         "fascia": fascia,
         "stato_iscrizione": stato_iscrizione,
         "zona_provenienza": zona_provenienza,
+        "tipo_evento": tipo_evento,
     }
 
-    destinatari = _query_destinatari(db, fascia, stato_iscrizione, zona_provenienza).all()
+    destinatari = _query_destinatari(db, fascia, stato_iscrizione, zona_provenienza, tipo_evento).all()
     risultato = None
 
     if azione == "invia":
@@ -944,12 +1034,12 @@ def comunicazioni_submit(
 
 
 @app.get("/report-pasti")
-def report_pasti_pagina(request: Request, db: Session = Depends(get_db)):
+def report_pasti_pagina(request: Request, evento: str = "tutti", db: Session = Depends(get_db)):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    righe = genera_report_pasti(db)
+    righe = genera_report_pasti(db, tipo_evento=None if evento == "tutti" else evento)
 
     return templates.TemplateResponse(
         request=request,
@@ -958,17 +1048,18 @@ def report_pasti_pagina(request: Request, db: Session = Depends(get_db)):
             "title": "Report pasti",
             "username": username,
             "righe": righe,
+            "evento_corrente": evento,
         },
     )
 
 
 @app.get("/report-pasti/csv")
-def report_pasti_csv(request: Request, db: Session = Depends(get_db)):
+def report_pasti_csv(request: Request, evento: str = "tutti", db: Session = Depends(get_db)):
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    righe = genera_report_pasti(db)
+    righe = genera_report_pasti(db, tipo_evento=None if evento == "tutti" else evento)
 
     def genera_righe_csv():
         yield "data,colazioni,pranzi,cene\n"

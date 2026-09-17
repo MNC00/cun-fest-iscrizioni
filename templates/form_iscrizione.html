@@ -117,6 +117,14 @@
                 <input type="text" class="form-control" data-field="zona_provenienza">
             </div>
             <div class="col-md-6">
+                <label class="form-label">Tipo di iscrizione all'evento</label>
+                <select class="form-select" data-field="tipo_evento">
+                    <option value="solo_cun">Solo CunFest</option>
+                    <option value="precun_cun">PreCunFest + CunFest</option>
+                    <option value="campo_famiglie_cun">Campo Famiglie + CunFest</option>
+                </select>
+            </div>
+            <div class="col-md-6">
                 <label class="form-label">Data arrivo</label>
                 <input type="date" class="form-control" data-field="data_arrivo">
             </div>
@@ -156,15 +164,26 @@
             </div>
             <div class="col-md-6">
                 <div class="form-check">
-                    <input class="form-check-input" type="checkbox" data-field="flag_parliamo_solo_lunedi" id="parliamo-lunedi-CHECK">
-                    <label class="form-check-label" for="parliamo-lunedi-CHECK">
-                        Partecipa solo a "Parliamone" del lunedì
+                    <input class="form-check-input" type="checkbox" data-field="flag_bosco_domenica" id="bosco-domenica-CHECK">
+                    <label class="form-check-label" for="bosco-domenica-CHECK">
+                        Vorrei dormire a Bosco la domenica sera
                     </label>
                 </div>
             </div>
+            <div class="col-md-6 campo-cena-domenica d-none">
+                <label class="form-label d-block">Cena della domenica</label>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="cena_domenica" data-field="flag_cena_ristorante_domenica" value="true" id="cena-ristorante-CHECK">
+                    <label class="form-check-label" for="cena-ristorante-CHECK">Al ristorante</label>
+                </div>
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="cena_domenica" data-field="flag_cena_ristorante_domenica" value="false" id="cena-autonoma-CHECK">
+                    <label class="form-check-label" for="cena-autonoma-CHECK">Mi organizzo autonomamente</label>
+                </div>
+            </div>
             <div class="col-12">
-                <div class="alert alert-info d-none msg-parliamo-lunedi mb-0">
-                    Info: la partecipazione è limitata all'incontro "Parliamone" del lunedì.
+                <div class="alert alert-info d-none msg-bosco-domenica mb-0">
+                    Info: se dormi a Bosco la domenica sera viene conteggiata una notte aggiuntiva nel prezzo.
                 </div>
             </div>
             <div class="col-12">
@@ -175,7 +194,13 @@
     </div>
 </template>
 
+<script>
+    window.PERIODO_EVENTO = {
+        min: {{ data_min_evento | tojson }},
+        max: {{ data_max_evento | tojson }}
+    };
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ url_for('static', path='/js/form_iscrizione.js') }}?v=2"></script>
+<script src="{{ url_for('static', path='/js/form_iscrizione.js') }}?v=3"></script>
 </body>
 </html>

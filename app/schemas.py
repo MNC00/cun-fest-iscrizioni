@@ -1,7 +1,9 @@
 from datetime import date
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, model_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
+
+TIPI_EVENTO_VALIDI = {"precun_cun", "campo_famiglie_cun", "solo_cun"}
 
 
 class ReferenteRequest(BaseModel):
@@ -23,9 +25,18 @@ class PartecipanteRequest(BaseModel):
     pasto_arrivo: Optional[str] = None
     pasto_partenza: Optional[str] = None
     flag_solo_pranzo_cun: bool = False
-    flag_parliamo_solo_lunedi: bool = False
+    flag_bosco_domenica: bool = False
+    flag_cena_ristorante_domenica: Optional[bool] = None
+    tipo_evento: str = "solo_cun"
     note: Optional[str] = None
     fascia_prezzo: str = "Generale"
+
+    @field_validator("tipo_evento")
+    @classmethod
+    def valida_tipo_evento(cls, valore: str) -> str:
+        if valore not in TIPI_EVENTO_VALIDI:
+            raise ValueError(f"tipo_evento non valido: deve essere uno tra {sorted(TIPI_EVENTO_VALIDI)}.")
+        return valore
 
 
 class IscrizioneFamigliaRequest(BaseModel):

@@ -27,6 +27,15 @@
                     </select>
                 </div>
                 <div class="col-auto">
+                    <label class="form-label" for="evento">Filtra per evento</label>
+                    <select class="form-select" id="evento" name="evento" onchange="this.form.submit()">
+                        <option value="tutti" {% if evento_corrente == "tutti" %}selected{% endif %}>Tutti gli eventi</option>
+                        {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
+                        <option value="{{ valore }}" {% if evento_corrente == valore %}selected{% endif %}>{{ etichetta }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
                     <button type="submit" class="btn btn-outline-primary">Filtra</button>
                 </div>
             </form>
@@ -44,6 +53,7 @@
                 <thead>
                     <tr>
                         <th>Partecipante</th>
+                        <th>Evento</th>
                         <th>Famiglia (referente)</th>
                         <th>Importo dovuto</th>
                         <th>Importo pagato</th>
@@ -57,6 +67,7 @@
                     {% for pagamento in pagamenti %}
                     <tr>
                         <td>{{ pagamento.partecipante.nome }} {{ pagamento.partecipante.cognome }}</td>
+                        <td class="small text-muted">{{ TIPI_EVENTO_LABELS.get(pagamento.partecipante.tipo_evento, pagamento.partecipante.tipo_evento) }}</td>
                         <td>{{ pagamento.partecipante.famiglia.referente_nome }} {{ pagamento.partecipante.famiglia.referente_cognome }}</td>
                         <td>{{ "%.2f"|format(pagamento.importo_dovuto or 0) }} €</td>
                         <td>{{ "%.2f"|format(pagamento.importo_pagato or 0) }} €</td>

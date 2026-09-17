@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS partecipanti (
     pasto_arrivo TEXT,
     pasto_partenza TEXT,
     flag_solo_pranzo_cun BOOLEAN DEFAULT FALSE,
-    flag_parliamo_solo_lunedi BOOLEAN DEFAULT FALSE,
+    flag_bosco_domenica BOOLEAN DEFAULT FALSE,
+    flag_cena_ristorante_domenica BOOLEAN,
+    tipo_evento TEXT DEFAULT 'solo_cun', -- 'precun_cun' | 'campo_famiglie_cun' | 'solo_cun'
     note TEXT,
     fascia_prezzo TEXT DEFAULT 'Generale',
     stato_iscrizione TEXT DEFAULT 'Inviata',

@@ -31,10 +31,24 @@ document.addEventListener("DOMContentLoaded", function () {
         });
 
         const checkSoloPranzo = blocco.querySelector('[data-field="flag_solo_pranzo_cun"]');
-        const checkParliamoLunedi = blocco.querySelector('[data-field="flag_parliamo_solo_lunedi"]');
+        const checkBoscoDomenica = blocco.querySelector('[data-field="flag_bosco_domenica"]');
         const campiPasto = blocco.querySelectorAll(".campo-pasto");
-        const msgParliamoLunedi = blocco.querySelector(".msg-parliamo-lunedi");
+        const msgBoscoDomenica = blocco.querySelector(".msg-bosco-domenica");
+        const campoCenaDomenica = blocco.querySelector(".campo-cena-domenica");
         const btnRimuovi = blocco.querySelector(".btn-rimuovi-partecipante");
+        const inputDataArrivo = blocco.querySelector('[data-field="data_arrivo"]');
+        const inputDataPartenza = blocco.querySelector('[data-field="data_partenza"]');
+
+        if (window.PERIODO_EVENTO) {
+            if (window.PERIODO_EVENTO.min) {
+                inputDataArrivo.min = window.PERIODO_EVENTO.min;
+                inputDataPartenza.min = window.PERIODO_EVENTO.min;
+            }
+            if (window.PERIODO_EVENTO.max) {
+                inputDataArrivo.max = window.PERIODO_EVENTO.max;
+                inputDataPartenza.max = window.PERIODO_EVENTO.max;
+            }
+        }
 
         checkSoloPranzo.addEventListener("change", function () {
             campiPasto.forEach((campo) => {
@@ -44,8 +58,13 @@ document.addEventListener("DOMContentLoaded", function () {
             });
         });
 
-        checkParliamoLunedi.addEventListener("change", function () {
-            msgParliamoLunedi.classList.toggle("d-none", !checkParliamoLunedi.checked);
+        checkBoscoDomenica.addEventListener("change", function () {
+            msgBoscoDomenica.classList.toggle("d-none", !checkBoscoDomenica.checked);
+            campoCenaDomenica.classList.toggle("d-none", !checkBoscoDomenica.checked);
+            campoCenaDomenica.querySelectorAll("input").forEach((radio) => {
+                radio.disabled = !checkBoscoDomenica.checked;
+                if (!checkBoscoDomenica.checked) radio.checked = false;
+            });
         });
 
         btnRimuovi.addEventListener("click", function () {
@@ -157,6 +176,9 @@ document.addEventListener("DOMContentLoaded", function () {
             };
 
             const soloPranzoCun = getChecked("flag_solo_pranzo_cun");
+            const boscoDomenica = getChecked("flag_bosco_domenica");
+            const cenaRistoranteEl = blocco.querySelector('[data-field="flag_cena_ristorante_domenica"]:checked');
+            const cenaRistorante = boscoDomenica && cenaRistoranteEl ? cenaRistoranteEl.value === "true" : null;
 
             partecipanti.push({
                 nome: getVal("nome"),
@@ -169,7 +191,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 pasto_arrivo: soloPranzoCun ? "nessuno" : getVal("pasto_arrivo"),
                 pasto_partenza: soloPranzoCun ? "nessuno" : getVal("pasto_partenza"),
                 flag_solo_pranzo_cun: soloPranzoCun,
-                flag_parliamo_solo_lunedi: getChecked("flag_parliamo_solo_lunedi"),
+                flag_bosco_domenica: boscoDomenica,
+                flag_cena_ristorante_domenica: cenaRistorante,
+                tipo_evento: getVal("tipo_evento") || "solo_cun",
                 note: getVal("note") || null,
                 fascia_prezzo: "Generale",
             });

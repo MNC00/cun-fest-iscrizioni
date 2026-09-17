@@ -28,10 +28,21 @@ Quando i prezzi ufficiali sono noti, inseriscili in `tariffe` adattando
 `sql/seed_tariffe_esempio.sql` (fasce Generale/Uninord/Unisud, prezzi
 notte/pasti, tetto di spesa, sconto giovani, date di validità).
 
+**Importante:** le colonne `valido_dal`/`valido_al` di `tariffe` non sono solo
+informative: l'app le usa anche per calcolare il periodo valido dell'evento
+(minimo di `valido_dal` e massimo di `valido_al` tra le tariffe attive) e
+rifiuta lato server le iscrizioni con data di arrivo/partenza fuori da
+quell'intervallo. È lo stesso periodo per tutti e tre i pacchetti
+(PreCunFest+CunFest, Campo Famiglie+CunFest, solo CunFest): assicurati che
+`valido_dal`/`valido_al` coprano l'intero arco dell'edizione (dal primo giorno
+del PreCunFest/Campo Famiglie all'ultimo giorno del CunFest).
+
 Se i prezzi non sono ancora noti al momento dell'apertura iscrizioni, non è
 un problema: l'app supporta iscrizioni con `tariffe` vuota (i prezzi restano
 `None` finché un operatore non lancia il ricalcolo da `/dashboard`, che invia
-automaticamente l'email di aggiornamento prezzo a tutti gli interessati).
+automaticamente l'email di aggiornamento prezzo a tutti gli interessati); in
+tal caso però non viene applicato nessun vincolo sulle date, finché almeno una
+tariffa attiva non ha `valido_dal`/`valido_al` valorizzati.
 
 ## 3. Account operatori
 

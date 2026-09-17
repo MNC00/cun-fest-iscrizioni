@@ -44,12 +44,18 @@
                     <div class="col-md-6">
                         <label class="form-label" for="data_arrivo">Data arrivo</label>
                         <input type="date" class="form-control" id="data_arrivo" name="data_arrivo"
-                               value="{{ partecipante.data_arrivo.isoformat() if partecipante.data_arrivo else '' }}" required>
+                               value="{{ partecipante.data_arrivo.isoformat() if partecipante.data_arrivo else '' }}"
+                               {% if data_min_evento %}min="{{ data_min_evento }}"{% endif %}
+                               {% if data_max_evento %}max="{{ data_max_evento }}"{% endif %}
+                               required>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" for="data_partenza">Data partenza</label>
                         <input type="date" class="form-control" id="data_partenza" name="data_partenza"
-                               value="{{ partecipante.data_partenza.isoformat() if partecipante.data_partenza else '' }}" required>
+                               value="{{ partecipante.data_partenza.isoformat() if partecipante.data_partenza else '' }}"
+                               {% if data_min_evento %}min="{{ data_min_evento }}"{% endif %}
+                               {% if data_max_evento %}max="{{ data_max_evento }}"{% endif %}
+                               required>
                     </div>
                 </div>
 
@@ -89,16 +95,42 @@
                     </select>
                 </div>
 
+                <div class="mb-3">
+                    <label class="form-label" for="tipo_evento">Tipo di iscrizione all'evento</label>
+                    <select class="form-select" id="tipo_evento" name="tipo_evento" required>
+                        {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
+                        <option value="{{ valore }}" {% if partecipante.tipo_evento == valore %}selected{% endif %}>
+                            {{ etichetta }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
                 <div class="form-check mb-2">
                     <input type="checkbox" class="form-check-input" id="flag_solo_pranzo_cun" name="flag_solo_pranzo_cun"
                            {% if partecipante.flag_solo_pranzo_cun %}checked{% endif %}>
                     <label class="form-check-label" for="flag_solo_pranzo_cun">Solo pranzo CUN</label>
                 </div>
 
-                <div class="form-check mb-4">
-                    <input type="checkbox" class="form-check-input" id="flag_parliamo_solo_lunedi" name="flag_parliamo_solo_lunedi"
-                           {% if partecipante.flag_parliamo_solo_lunedi %}checked{% endif %}>
-                    <label class="form-check-label" for="flag_parliamo_solo_lunedi">Parliamo solo lunedì</label>
+                <div class="form-check mb-2">
+                    <input type="checkbox" class="form-check-input" id="flag_bosco_domenica" name="flag_bosco_domenica"
+                           onchange="document.getElementById('blocco-cena-domenica').classList.toggle('d-none', !this.checked)"
+                           {% if partecipante.flag_bosco_domenica %}checked{% endif %}>
+                    <label class="form-check-label" for="flag_bosco_domenica">Vorrebbe dormire a Bosco la domenica sera (+1 notte)</label>
+                </div>
+
+                <div class="mb-4 {% if not partecipante.flag_bosco_domenica %}d-none{% endif %}" id="blocco-cena-domenica">
+                    <label class="form-label d-block">Cena della domenica</label>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="flag_cena_ristorante_domenica" value="true" id="cena_ristorante"
+                               {% if partecipante.flag_cena_ristorante_domenica %}checked{% endif %}>
+                        <label class="form-check-label" for="cena_ristorante">Al ristorante</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="flag_cena_ristorante_domenica" value="false" id="cena_autonoma"
+                               {% if partecipante.flag_cena_ristorante_domenica == false %}checked{% endif %}>
+                        <label class="form-check-label" for="cena_autonoma">Mi organizzo autonomamente</label>
+                    </div>
                 </div>
 
                 <div class="mb-4">

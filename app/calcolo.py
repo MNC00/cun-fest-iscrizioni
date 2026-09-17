@@ -14,6 +14,29 @@ class CalcoloPrezzoError(Exception):
     """Errore applicativo nel calcolo del prezzo di un partecipante."""
 
 
+def ottieni_periodo_evento(db: Session) -> tuple:
+    """Ritorna (data_min, data_max) del periodo dell'evento, calcolato come
+    l'unione degli intervalli valido_dal/valido_al delle tariffe attive.
+
+    Stesso periodo per tutti i pacchetti (PreCunFest, Campo Famiglie, solo
+    CunFest): la distinzione tra pacchetti serve solo per report/filtri, non
+    per il calcolo di questo intervallo. Se le tariffe non hanno le date
+    valorizzate (o non sono ancora configurate), ritorna (None, None): nessun
+    vincolo applicato (coerente con lo scenario "prezzi non ancora noti").
+    """
+    righe = (
+        db.query(Tariffa.valido_dal, Tariffa.valido_al)
+        .filter(Tariffa.attivo.is_(True))
+        .all()
+    )
+    date_inizio = [r.valido_dal for r in righe if r.valido_dal is not None]
+    date_fine = [r.valido_al for r in righe if r.valido_al is not None]
+
+    data_min = min(date_inizio) if date_inizio else None
+    data_max = max(date_fine) if date_fine else None
+    return data_min, data_max
+
+
 def _conta_pasti(partecipante: Partecipante) -> dict:
     """Conta colazioni, pranzi e cene dovuti in base al soggiorno del partecipante."""
     colazioni = pranzi = cene = 0
@@ -70,6 +93,11 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
         raise CalcoloPrezzoError("La data di partenza precede la data di arrivo.")
 
     notti = (partecipante.data_partenza - partecipante.data_arrivo).days
+    if partecipante.flag_bosco_domenica:
+        # Chi partecipa solo a "Parliamone" del lunedì arriva la domenica sera
+        # per dormire a Bosco: notte aggiuntiva non coperta dall'intervallo
+        # arrivo/partenza dichiarato (che tipicamente indica solo il lunedì).
+        notti += 1
 
     pasti = _conta_pasti(partecipante)
     colazioni, pranzi, cene = pasti["colazioni"], pasti["pranzi"], pasti["cene"]
@@ -186,22 +214,23 @@ def calcola_pasti_per_giorno(partecipante: Partecipante, db: Session = None) -> 
     return risultato
 
 
-def genera_report_pasti(db: Session) -> list:
+def genera_report_pasti(db: Session, tipo_evento: str | None = None) -> list:
     """Genera il report giornaliero dei pasti per tutti i partecipanti attivi.
 
     Considera solo i partecipanti con stato_iscrizione diverso da 'Annullata'
     e con date di arrivo/partenza valorizzate. Copre l'intero intervallo tra
     la data di arrivo più vecchia e la data di partenza più recente.
+    Se tipo_evento è valorizzato, filtra solo i partecipanti di quel pacchetto
+    (PreCunFest+Cun / Campo Famiglie+Cun / solo Cun).
     """
-    partecipanti = (
-        db.query(Partecipante)
-        .filter(
-            Partecipante.stato_iscrizione != "Annullata",
-            Partecipante.data_arrivo.isnot(None),
-            Partecipante.data_partenza.isnot(None),
-        )
-        .all()
+    query = db.query(Partecipante).filter(
+        Partecipante.stato_iscrizione != "Annullata",
+        Partecipante.data_arrivo.isnot(None),
+        Partecipante.data_partenza.isnot(None),
     )
+    if tipo_evento:
+        query = query.filter(Partecipante.tipo_evento == tipo_evento)
+    partecipanti = query.all()
 
     conteggi: dict = {}
     for partecipante in partecipanti:

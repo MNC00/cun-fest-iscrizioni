@@ -19,6 +19,17 @@
     <div class="alert alert-success">Iscrizione modificata con successo.</div>
     {% endif %}
 
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link {% if evento_corrente == 'tutti' %}active{% endif %}" href="/dashboard?evento=tutti">Tutti gli eventi</a>
+        </li>
+        {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
+        <li class="nav-item">
+            <a class="nav-link {% if evento_corrente == valore %}active{% endif %}" href="/dashboard?evento={{ valore }}">{{ etichetta }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+
     <div class="row g-3 mb-3">
         <div class="col-sm-4">
             <div class="card text-center shadow-sm">
@@ -83,6 +94,7 @@
                             {% else %}
                             <ul class="list-unstyled mb-0">
                                 {% for p in famiglia.partecipanti %}
+                                {% if evento_corrente == 'tutti' or p.tipo_evento == evento_corrente %}
                                 <li class="mb-2 pb-2 border-bottom">
                                     <div>
                                         {{ p.nome }} {{ p.cognome }}
@@ -92,6 +104,7 @@
                                     </div>
                                     <div class="small text-muted">
                                         Stato: {{ p.stato_iscrizione }}
+                                        · {{ TIPI_EVENTO_LABELS.get(p.tipo_evento, p.tipo_evento) }}
                                         {% if p.prezzo_netto is not none %}
                                         · Prezzo netto: {{ "%.2f"|format(p.prezzo_netto) }} €
                                         {% endif %}
@@ -115,6 +128,7 @@
                                         {% endif %}
                                     </div>
                                 </li>
+                                {% endif %}
                                 {% endfor %}
                             </ul>
                             {% endif %}
@@ -129,3 +143,4 @@
 </div>
 </body>
 </html>
+

@@ -47,7 +47,9 @@ class Partecipante(Base):
     pasto_arrivo = Column(String)
     pasto_partenza = Column(String)
     flag_solo_pranzo_cun = Column(Boolean, default=False)
-    flag_parliamo_solo_lunedi = Column(Boolean, default=False)
+    flag_bosco_domenica = Column(Boolean, default=False)
+    flag_cena_ristorante_domenica = Column(Boolean)  # solo se flag_bosco_domenica; None = non applicabile
+    tipo_evento = Column(String, default="solo_cun")  # 'precun_cun' | 'campo_famiglie_cun' | 'solo_cun'
     note = Column(Text)
     fascia_prezzo = Column(String, default="Generale")
     stato_iscrizione = Column(String, default="Inviata")
