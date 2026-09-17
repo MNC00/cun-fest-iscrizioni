@@ -106,13 +106,13 @@
                         <div class="col-md-6">
                             <label class="form-label" for="pasto_partenza">Pasto partenza</label>
                             <select class="form-select" id="pasto_partenza" name="pasto_partenza">
-                                {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("cena", "Cena"), ("prima_colazione", "Prima di colazione")] %}
+                                {% for opzione, etichetta in [("nessuno", "Nessuno"), ("colazione", "Colazione"), ("pranzo", "Pranzo"), ("prima_colazione", "Prima di colazione")] %}
                                 <option value="{{ opzione }}" {% if partecipante.pasto_partenza == opzione %}selected{% endif %}>
                                     {{ etichetta }}
                                 </option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">Fino a quale pasto contare il giorno di partenza (o "Prima di colazione" se parte prima).</div>
+                            <div class="form-text">Fino a quale pasto contare il giorno di partenza (o "Prima di colazione" se parte prima). L'ultimo pasto disponibile è il pranzo dell'ultimo giorno.</div>
                         </div>
                     </div>
 

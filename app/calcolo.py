@@ -299,10 +299,34 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
     return _salva_e_logga(partecipante, db, dettagli)
 
 
+# Ordine cronologico dei pasti in un giorno, usato per "espandere" la scelta
+# di arrivo/partenza in tutti i pasti effettivamente dovuti (vedi
+# calcola_pasti_per_giorno): "pasto_arrivo" indica da quale pasto in poi si è
+# presenti, "pasto_partenza" fino a quale pasto (incluso) si resta.
+ORDINE_PASTI = ["colazione", "pranzo", "cena"]
+
+
+def _pasti_da(pasto: str) -> set:
+    """Pasti dovuti il giorno di arrivo, a partire da 'pasto' (incluso)."""
+    if pasto not in ORDINE_PASTI:
+        return set()
+    return set(ORDINE_PASTI[ORDINE_PASTI.index(pasto):])
+
+
+def _pasti_fino_a(pasto: str) -> set:
+    """Pasti dovuti il giorno di partenza, fino a 'pasto' (incluso)."""
+    if pasto not in ORDINE_PASTI:
+        return set()
+    return set(ORDINE_PASTI[: ORDINE_PASTI.index(pasto) + 1])
+
+
 def calcola_pasti_per_giorno(partecipante: Partecipante, db: Session = None) -> dict:
     """Calcola, giorno per giorno, quali pasti sono dovuti per un partecipante.
 
     Ritorna un dict {data: {"colazione": bool, "pranzo": bool, "cena": bool}}.
+    "pasto_arrivo" e "pasto_partenza" sono estremi di un intervallo (non un
+    singolo pasto isolato): se ad es. pasto_partenza = "pranzo", il
+    partecipante resta per colazione E pranzo quel giorno, non solo il pranzo.
     Il parametro db non è utilizzato nel calcolo, è mantenuto per coerenza
     con le altre funzioni che operano nel contesto di una sessione.
     """
@@ -324,11 +348,15 @@ def calcola_pasti_per_giorno(partecipante: Partecipante, db: Session = None) -> 
         return risultato
 
     if partecipante.data_arrivo == partecipante.data_partenza:
-        imposta(partecipante.data_arrivo, partecipante.pasto_arrivo)
-        imposta(partecipante.data_arrivo, partecipante.pasto_partenza)
+        # Stesso giorno: i pasti dovuti sono l'intersezione tra "da quale
+        # pasto si è presenti" e "fino a quale pasto si resta".
+        pasti_dovuti = _pasti_da(partecipante.pasto_arrivo) & _pasti_fino_a(partecipante.pasto_partenza)
+        for pasto in pasti_dovuti:
+            imposta(partecipante.data_arrivo, pasto)
         return risultato
 
-    imposta(partecipante.data_arrivo, partecipante.pasto_arrivo)
+    for pasto in _pasti_da(partecipante.pasto_arrivo):
+        imposta(partecipante.data_arrivo, pasto)
 
     giorno = partecipante.data_arrivo + timedelta(days=1)
     while giorno < partecipante.data_partenza:
@@ -337,7 +365,8 @@ def calcola_pasti_per_giorno(partecipante: Partecipante, db: Session = None) -> 
         imposta(giorno, "cena")
         giorno += timedelta(days=1)
 
-    imposta(partecipante.data_partenza, partecipante.pasto_partenza)
+    for pasto in _pasti_fino_a(partecipante.pasto_partenza):
+        imposta(partecipante.data_partenza, pasto)
 
     return risultato
 
