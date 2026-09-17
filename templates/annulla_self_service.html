@@ -8,8 +8,10 @@
     <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
 </head>
 <body class="bg-light">
+{% set form_action = ("/dashboard/annulla/" ~ partecipante.id) if is_operatore else ("/annulla/" ~ partecipante.token_annullamento) %}
 <div class="container py-4" style="max-width: 640px;">
-    <h1 class="h4 mb-4">CUN Fest &mdash; Annulla iscrizione</h1>
+    {% if is_operatore %}<a href="/dashboard" class="small">&larr; Torna alla dashboard</a>{% endif %}
+    <h1 class="h4 mb-4 mt-2">CUN Fest &mdash; Annulla iscrizione</h1>
 
     {% if errore %}
     <div class="alert alert-danger">{{ errore }}</div>
@@ -28,6 +30,14 @@
     {% else %}
     <div class="card shadow-sm">
         <div class="card-body">
+            {% if is_operatore %}
+            <p>Annullamento iscrizione di <strong>{{ partecipante.nome }} {{ partecipante.cognome }}</strong>.</p>
+            {% if altri_partecipanti %}
+            <p class="text-muted small">
+                Nel suo nucleo familiare ci sono anche: {{ altri_partecipanti | map(attribute='nome') | list | join(', ') }}.
+            </p>
+            {% endif %}
+            {% else %}
             <p>Ciao <strong>{{ partecipante.nome }} {{ partecipante.cognome }}</strong>, da qui puoi annullare
             la tua iscrizione al CUN Fest.</p>
 
@@ -36,10 +46,11 @@
                 Nel tuo nucleo familiare ci sono anche: {{ altri_partecipanti | map(attribute='nome') | list | join(', ') }}.
             </p>
             {% endif %}
+            {% endif %}
 
-            <form method="post" action="/annulla/{{ partecipante.token_annullamento }}" class="mb-4 pb-4 border-bottom">
+            <form method="post" action="{{ form_action }}" class="mb-4 pb-4 border-bottom">
                 <input type="hidden" name="azione" value="singola">
-                <h2 class="h6">Annulla solo la mia iscrizione</h2>
+                <h2 class="h6">Annulla solo {{ "la sua" if is_operatore else "la mia" }} iscrizione</h2>
 
                 {% if altri_partecipanti %}
                 <p class="small text-muted">
@@ -61,11 +72,11 @@
                 </div>
                 {% endif %}
 
-                <button type="submit" class="btn btn-outline-danger">Annulla la mia sola iscrizione</button>
+                <button type="submit" class="btn btn-outline-danger">Annulla {{ "la sua sola" if is_operatore else "la mia sola" }} iscrizione</button>
             </form>
 
             {% if altri_partecipanti %}
-            <form method="post" action="/annulla/{{ partecipante.token_annullamento }}">
+            <form method="post" action="{{ form_action }}">
                 <input type="hidden" name="azione" value="nucleo">
                 <h2 class="h6">Annulla tutto il nucleo familiare</h2>
                 <p class="small text-muted">

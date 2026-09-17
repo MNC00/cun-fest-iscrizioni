@@ -19,6 +19,33 @@
     <div class="alert alert-success">Iscrizione modificata con successo.</div>
     {% endif %}
 
+    <div class="row g-3 mb-3">
+        <div class="col-sm-4">
+            <div class="card text-center shadow-sm">
+                <div class="card-body py-2">
+                    <div class="h4 mb-0">{{ totale_partecipanti }}</div>
+                    <div class="small text-muted">Partecipanti totali</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card text-center shadow-sm">
+                <div class="card-body py-2">
+                    <div class="h4 mb-0">{{ nuclei_familiari }}</div>
+                    <div class="small text-muted">Nuclei familiari (&gt;1 persona)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-4">
+            <div class="card text-center shadow-sm">
+                <div class="card-body py-2">
+                    <div class="h4 mb-0">{{ iscritti_singoli }}</div>
+                    <div class="small text-muted">Iscrizioni singole</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <form method="post" action="/ricalcola-prezzi-mancanti" class="mb-3"
           onsubmit="return confirm('Ricalcolare il prezzo di tutti i partecipanti senza prezzo e inviare le email di aggiornamento?');">
         <button type="submit" class="btn btn-warning">
@@ -82,12 +109,9 @@
                                             </button>
                                         </form>
                                         {% if p.stato_iscrizione != "Annullata" %}
-                                        <form method="post" action="/annulla-iscrizione/{{ p.id }}"
-                                              onsubmit="return confirm('Annullare l\'iscrizione di {{ p.nome }} {{ p.cognome }}?');">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                Annulla iscrizione
-                                            </button>
-                                        </form>
+                                        <a href="/dashboard/annulla/{{ p.id }}" class="btn btn-sm btn-outline-danger">
+                                            Annulla iscrizione
+                                        </a>
                                         {% endif %}
                                     </div>
                                 </li>

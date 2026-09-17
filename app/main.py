@@ -226,6 +226,16 @@ def dashboard(request: Request, msg: str | None = None, db: Session = Depends(ge
         .all()
     )
 
+    # Statistiche: un nucleo familiare con un solo membro attivo è una "iscrizione
+    # singola", non va conteggiato come famiglia nelle statistiche (nucleo = famiglia
+    # con più di un partecipante attivo).
+    attivi_per_famiglia = [
+        [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata"] for famiglia in famiglie
+    ]
+    totale_partecipanti = sum(len(attivi) for attivi in attivi_per_famiglia)
+    nuclei_familiari = sum(1 for attivi in attivi_per_famiglia if len(attivi) > 1)
+    iscritti_singoli = sum(1 for attivi in attivi_per_famiglia if len(attivi) == 1)
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -234,6 +244,9 @@ def dashboard(request: Request, msg: str | None = None, db: Session = Depends(ge
             "username": username,
             "famiglie": famiglie,
             "msg": msg,
+            "totale_partecipanti": totale_partecipanti,
+            "nuclei_familiari": nuclei_familiari,
+            "iscritti_singoli": iscritti_singoli,
         },
     )
 
@@ -436,41 +449,196 @@ def modifica_iscrizione_submit(
     return RedirectResponse(url="/dashboard?ok=1", status_code=303)
 
 
-@app.post("/annulla-iscrizione/{partecipante_id}")
-def annulla_iscrizione(partecipante_id: int, request: Request, db: Session = Depends(get_db)):
+def _esegui_annullamento(
+    db: Session,
+    partecipante: Partecipante,
+    famiglia: Famiglia,
+    azione: str,
+    operatore_label: str,
+    nuovo_referente_nome: str = "",
+    nuovo_referente_cognome: str = "",
+    nuovo_referente_email: str = "",
+    nuovo_referente_telefono: str = "",
+) -> tuple[bool, str | None]:
+    """Esegue l'annullamento (singola o nucleo) di un'iscrizione, logga l'evento e
+    invia la relativa email. Condivisa tra il flusso self-service e quello operatore.
+
+    Ritorna (ok, messaggio_errore). Se ok è False la transazione non è stata modificata.
+    """
+    if azione == "nucleo":
+        attivi = [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata"]
+        nomi_annullati = []
+        for p in attivi:
+            p.stato_iscrizione = "Annullata"
+            nomi_annullati.append(f"{p.nome} {p.cognome}")
+            db.add(
+                LogEvento(
+                    oggetto_tipo="partecipante",
+                    oggetto_id=p.id,
+                    azione="iscrizione_annullata",
+                    operatore=operatore_label,
+                    dettagli={"modalita": "nucleo", "famiglia_id": famiglia.id},
+                )
+            )
+        db.commit()
+
+        if nomi_annullati:
+            try:
+                invia_annullamento_nucleo(email=famiglia.email, nomi=nomi_annullati)
+            except EmailServiceError as exc:
+                logger.error("Invio email annullamento nucleo fallito per famiglia %s: %s", famiglia.id, exc)
+        return True, None
+
+    if azione == "singola":
+        altri_attivi = [
+            p for p in famiglia.partecipanti if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+        ]
+
+        if altri_attivi and not (nuovo_referente_nome and nuovo_referente_cognome and nuovo_referente_email):
+            return False, (
+                "Dato che restano altri iscritti nel nucleo, indica nome, cognome ed email del "
+                "nuovo referente per il nucleo familiare."
+            )
+
+        partecipante.stato_iscrizione = "Annullata"
+        db.add(
+            LogEvento(
+                oggetto_tipo="partecipante",
+                oggetto_id=partecipante.id,
+                azione="iscrizione_annullata",
+                operatore=operatore_label,
+                dettagli={"modalita": "singola", "famiglia_id": famiglia.id},
+            )
+        )
+
+        if altri_attivi:
+            famiglia.referente_nome = nuovo_referente_nome
+            famiglia.referente_cognome = nuovo_referente_cognome
+            famiglia.email = nuovo_referente_email
+            famiglia.telefono = nuovo_referente_telefono or famiglia.telefono
+
+        db.commit()
+
+        try:
+            invia_annullamento(email=famiglia.email, nome=partecipante.nome)
+        except EmailServiceError as exc:
+            logger.error(
+                "Invio email annullamento singola fallito per partecipante %s: %s",
+                partecipante.id,
+                exc,
+            )
+        return True, None
+
+    return False, "Azione non riconosciuta."
+
+
+@app.get("/dashboard/annulla/{partecipante_id}")
+def annulla_iscrizione_operatore_form(partecipante_id: int, request: Request, db: Session = Depends(get_db)):
+    """Pagina operatore per annullare un'iscrizione: singola (con eventuale riassegnazione
+    del referente) oppure l'intero nucleo familiare."""
     username = get_current_operatore_username(request)
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
     partecipante = (
         db.query(Partecipante)
-        .options(joinedload(Partecipante.famiglia))
+        .options(joinedload(Partecipante.famiglia).joinedload(Famiglia.partecipanti))
         .filter(Partecipante.id == partecipante_id)
         .first()
     )
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
-    stato_precedente = partecipante.stato_iscrizione
-    partecipante.stato_iscrizione = "Annullata"
+    if partecipante.stato_iscrizione == "Annullata":
+        return templates.TemplateResponse(
+            request=request,
+            name="annulla_self_service.html",
+            context={
+                "title": "Annulla iscrizione",
+                "partecipante": partecipante,
+                "altri_partecipanti": [],
+                "gia_annullata": True,
+                "is_operatore": True,
+            },
+        )
 
-    log = LogEvento(
-        oggetto_tipo="partecipante",
-        oggetto_id=partecipante.id,
-        azione="iscrizione_annullata",
-        operatore=username,
-        dettagli={"stato_precedente": stato_precedente, "stato_nuovo": "Annullata"},
+    altri_partecipanti = [
+        p
+        for p in partecipante.famiglia.partecipanti
+        if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+    ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="annulla_self_service.html",
+        context={
+            "title": "Annulla iscrizione",
+            "partecipante": partecipante,
+            "altri_partecipanti": altri_partecipanti,
+            "gia_annullata": False,
+            "is_operatore": True,
+        },
     )
-    db.add(log)
-    db.commit()
 
-    try:
-        invia_annullamento(email=partecipante.famiglia.email, nome=partecipante.nome)
-        msg = f"Iscrizione di {partecipante.nome} {partecipante.cognome} annullata. Email inviata."
-    except EmailServiceError as exc:
-        msg = f"Iscrizione annullata, ma invio email fallito: {exc}"
 
-    return RedirectResponse(url=f"/dashboard?msg={msg}", status_code=303)
+@app.post("/dashboard/annulla/{partecipante_id}")
+def annulla_iscrizione_operatore_submit(
+    partecipante_id: int,
+    request: Request,
+    azione: str = Form(...),
+    nuovo_referente_nome: str = Form(""),
+    nuovo_referente_cognome: str = Form(""),
+    nuovo_referente_email: str = Form(""),
+    nuovo_referente_telefono: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    username = get_current_operatore_username(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=303)
+
+    partecipante = (
+        db.query(Partecipante)
+        .options(joinedload(Partecipante.famiglia).joinedload(Famiglia.partecipanti))
+        .filter(Partecipante.id == partecipante_id)
+        .first()
+    )
+    if not partecipante:
+        raise HTTPException(status_code=404, detail="Partecipante non trovato.")
+
+    famiglia = partecipante.famiglia
+    ok, errore = _esegui_annullamento(
+        db,
+        partecipante,
+        famiglia,
+        azione,
+        operatore_label=username,
+        nuovo_referente_nome=nuovo_referente_nome,
+        nuovo_referente_cognome=nuovo_referente_cognome,
+        nuovo_referente_email=nuovo_referente_email,
+        nuovo_referente_telefono=nuovo_referente_telefono,
+    )
+
+    if not ok:
+        altri_partecipanti = [
+            p
+            for p in famiglia.partecipanti
+            if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+        ]
+        return templates.TemplateResponse(
+            request=request,
+            name="annulla_self_service.html",
+            context={
+                "title": "Annulla iscrizione",
+                "partecipante": partecipante,
+                "altri_partecipanti": altri_partecipanti,
+                "gia_annullata": False,
+                "is_operatore": True,
+                "errore": errore,
+            },
+            status_code=400,
+        )
+
+    return RedirectResponse(url="/dashboard?msg=Iscrizione+annullata+con+successo.", status_code=303)
 
 
 @app.get("/annulla/{token}")
@@ -537,73 +705,19 @@ def annulla_self_service_submit(
         raise HTTPException(status_code=404, detail="Link di annullamento non valido.")
 
     famiglia = partecipante.famiglia
-    messaggio_errore = None
+    ok, messaggio_errore = _esegui_annullamento(
+        db,
+        partecipante,
+        famiglia,
+        azione,
+        operatore_label="self-service",
+        nuovo_referente_nome=nuovo_referente_nome,
+        nuovo_referente_cognome=nuovo_referente_cognome,
+        nuovo_referente_email=nuovo_referente_email,
+        nuovo_referente_telefono=nuovo_referente_telefono,
+    )
 
-    if azione == "nucleo":
-        attivi = [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata"]
-        nomi_annullati = []
-        for p in attivi:
-            p.stato_iscrizione = "Annullata"
-            nomi_annullati.append(f"{p.nome} {p.cognome}")
-            db.add(
-                LogEvento(
-                    oggetto_tipo="partecipante",
-                    oggetto_id=p.id,
-                    azione="iscrizione_annullata",
-                    operatore="self-service",
-                    dettagli={"modalita": "nucleo", "famiglia_id": famiglia.id},
-                )
-            )
-        db.commit()
-
-        if nomi_annullati:
-            try:
-                invia_annullamento_nucleo(email=famiglia.email, nomi=nomi_annullati)
-            except EmailServiceError as exc:
-                logger.error("Invio email annullamento nucleo fallito per famiglia %s: %s", famiglia.id, exc)
-
-    elif azione == "singola":
-        altri_attivi = [
-            p for p in famiglia.partecipanti if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
-        ]
-
-        if altri_attivi and not (nuovo_referente_nome and nuovo_referente_cognome and nuovo_referente_email):
-            messaggio_errore = (
-                "Dato che restano altri iscritti nel nucleo, indica nome, cognome ed email del "
-                "nuovo referente per il nucleo familiare."
-            )
-        else:
-            partecipante.stato_iscrizione = "Annullata"
-            db.add(
-                LogEvento(
-                    oggetto_tipo="partecipante",
-                    oggetto_id=partecipante.id,
-                    azione="iscrizione_annullata",
-                    operatore="self-service",
-                    dettagli={"modalita": "singola", "famiglia_id": famiglia.id},
-                )
-            )
-
-            if altri_attivi:
-                famiglia.referente_nome = nuovo_referente_nome
-                famiglia.referente_cognome = nuovo_referente_cognome
-                famiglia.email = nuovo_referente_email
-                famiglia.telefono = nuovo_referente_telefono or famiglia.telefono
-
-            db.commit()
-
-            try:
-                invia_annullamento(email=famiglia.email, nome=partecipante.nome)
-            except EmailServiceError as exc:
-                logger.error(
-                    "Invio email annullamento singola fallito per partecipante %s: %s",
-                    partecipante.id,
-                    exc,
-                )
-    else:
-        messaggio_errore = "Azione non riconosciuta."
-
-    if messaggio_errore:
+    if not ok:
         altri_partecipanti = [
             p
             for p in famiglia.partecipanti
