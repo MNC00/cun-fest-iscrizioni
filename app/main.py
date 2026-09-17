@@ -21,6 +21,7 @@ from app.calcolo import (
     CalcoloPrezzoError,
     calcola_prezzo_partecipante,
     genera_report_pasti,
+    conta_bosco_domenica,
     ottieni_periodo_evento,
 )
 from app.database import get_db
@@ -1169,6 +1170,10 @@ def report_pasti_pagina(request: Request, evento: str = "tutti", db: Session = D
 
     righe = genera_report_pasti(db, tipo_evento=None if evento == "tutti" else evento)
 
+    bosco_domenica = None
+    if evento in ("tutti", "cun_fest"):
+        bosco_domenica = conta_bosco_domenica(db, tipo_evento=None if evento == "tutti" else evento)
+
     return templates.TemplateResponse(
         request=request,
         name="report_pasti.html",
@@ -1177,6 +1182,7 @@ def report_pasti_pagina(request: Request, evento: str = "tutti", db: Session = D
             "username": username,
             "righe": righe,
             "evento_corrente": evento,
+            "bosco_domenica": bosco_domenica,
         },
     )
 

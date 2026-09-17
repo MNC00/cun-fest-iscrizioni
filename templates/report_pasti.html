@@ -22,6 +22,25 @@
         {% endfor %}
     </ul>
 
+    {% if bosco_domenica %}
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h2 class="h5">Bosco la domenica sera</h2>
+            <p class="mb-2">
+                <strong>{{ bosco_domenica.totale }}</strong> partecipant{{ "e" if bosco_domenica.totale == 1 else "i" }}
+                ha{{ "" if bosco_domenica.totale == 1 else "nno" }} flaggato "Vorrei dormire a Bosco la domenica sera".
+            </p>
+            <ul class="mb-0">
+                <li>Cena al ristorante: <strong>{{ bosco_domenica.ristorante }}</strong></li>
+                <li>Si organizza autonomamente: <strong>{{ bosco_domenica.autonoma }}</strong></li>
+                {% if bosco_domenica.non_specificato %}
+                <li>Non ancora specificato: <strong>{{ bosco_domenica.non_specificato }}</strong></li>
+                {% endif %}
+            </ul>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="card shadow-sm">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">

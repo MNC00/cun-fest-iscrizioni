@@ -375,11 +375,16 @@ def genera_report_pasti(db: Session, tipo_evento: str | None = None) -> list:
     """Genera il report giornaliero dei pasti per tutti i partecipanti attivi.
 
     Considera solo i partecipanti con stato_iscrizione diverso da 'Annullata'
-    e con date di arrivo/partenza valorizzate. Copre l'intero intervallo tra
-    la data di arrivo più vecchia e la data di partenza più recente.
-    Se tipo_evento è valorizzato (precun/campo_famiglie/cun_fest/pranzo_cun),
-    filtra solo i partecipanti iscritti a quell'evento (un partecipante può
-    comparire in più filtri se ha selezionato più eventi).
+    e con date di arrivo/partenza valorizzate. Se tipo_evento è valorizzato
+    (precun/campo_famiglie/cun_fest/pranzo_cun), filtra solo i partecipanti
+    iscritti a quell'evento (un partecipante può comparire in più filtri se
+    ha selezionato più eventi).
+
+    Il report copre sempre almeno l'intero periodo ufficiale dell'evento/i
+    considerati (da periodi_evento, se configurato), anche oltre l'ultimo
+    giorno con pasti effettivamente registrati: questo garantisce che
+    l'ultimo giorno (tipicamente solo pranzo, senza cena) compaia sempre in
+    tabella con 0 se non ci sono ancora iscrizioni fino a quella data.
     """
     query = db.query(Partecipante).filter(
         Partecipante.stato_iscrizione != "Annullata",
@@ -404,11 +409,22 @@ def genera_report_pasti(db: Session, tipo_evento: str | None = None) -> list:
             if pasti["cena"]:
                 riga["cene"] += 1
 
-    if not conteggi:
+    periodi = _mappa_periodi(db)
+    tipi_considerati = [tipo_evento] if tipo_evento else list(COLONNA_EVENTO.keys())
+    date_inizio_periodo = [periodi[t][0] for t in tipi_considerati if periodi.get(t) and periodi[t][0]]
+    date_fine_periodo = [periodi[t][1] for t in tipi_considerati if periodi.get(t) and periodi[t][1]]
+
+    candidati_min = list(date_inizio_periodo)
+    candidati_max = list(date_fine_periodo)
+    if conteggi:
+        candidati_min.append(min(conteggi))
+        candidati_max.append(max(conteggi))
+
+    if not candidati_min or not candidati_max:
         return []
 
-    giorno_min = min(conteggi)
-    giorno_max = max(conteggi)
+    giorno_min = min(candidati_min)
+    giorno_max = max(candidati_max)
 
     report = []
     giorno = giorno_min
@@ -418,3 +434,30 @@ def genera_report_pasti(db: Session, tipo_evento: str | None = None) -> list:
         giorno += timedelta(days=1)
 
     return report
+
+
+def conta_bosco_domenica(db: Session, tipo_evento: str | None = None) -> dict:
+    """Conta i partecipanti attivi che hanno flaggato 'Vorrei dormire a Bosco
+    la domenica sera', suddivisi in base a come intendono cenare la domenica
+    (al ristorante / autonomamente / non ancora specificato).
+    """
+    query = db.query(Partecipante).filter(
+        Partecipante.stato_iscrizione != "Annullata",
+        Partecipante.flag_bosco_domenica.is_(True),
+    )
+    if tipo_evento:
+        colonna = COLONNA_EVENTO.get(tipo_evento)
+        if colonna is not None:
+            query = query.filter(colonna.is_(True))
+    partecipanti = query.all()
+
+    ristorante = sum(1 for p in partecipanti if p.flag_cena_ristorante_domenica is True)
+    autonoma = sum(1 for p in partecipanti if p.flag_cena_ristorante_domenica is False)
+    non_specificato = sum(1 for p in partecipanti if p.flag_cena_ristorante_domenica is None)
+
+    return {
+        "totale": len(partecipanti),
+        "ristorante": ristorante,
+        "autonoma": autonoma,
+        "non_specificato": non_specificato,
+    }
