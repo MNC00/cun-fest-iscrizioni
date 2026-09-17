@@ -36,32 +36,35 @@
 
         <!-- Sezione Referente -->
         <div class="card mb-4">
-            <div class="card-header fw-bold">Referente famiglia</div>
-            <div class="card-body row g-3">
-                <div class="col-md-6 campo-referente-nome">
-                    <label class="form-label">Nome</label>
-                    <input type="text" class="form-control" name="referente_nome">
-                </div>
-                <div class="col-md-6 campo-referente-nome">
-                    <label class="form-label">Cognome</label>
-                    <input type="text" class="form-control" name="referente_cognome">
-                </div>
-                <div class="col-md-6 campo-referente-contatto">
-                    <label class="form-label">Email</label>
-                    <input type="email" class="form-control" name="referente_email" required>
-                </div>
-                <div class="col-md-6 campo-referente-contatto">
-                    <label class="form-label">Telefono</label>
-                    <input type="tel" class="form-control" name="referente_telefono">
-                </div>
-                <div class="col-md-6 campo-referente-contatto">
-                    <label class="form-label">Zona di provenienza</label>
-                    <input type="text" class="form-control" name="referente_zona_provenienza">
-                </div>
-                <div class="col-md-6 d-none campo-famiglia-esistente">
-                    <label class="form-label">Email del nucleo già iscritto</label>
-                    <input type="email" class="form-control" name="famiglia_esistente_email">
-                    <div class="form-text">Inserisci l'email usata per la prima iscrizione della famiglia.</div>
+            <div class="card-header fw-bold" id="titolo-sezione-referente">Referente famiglia</div>
+            <div class="card-body">
+                <p class="text-muted small" id="sottotitolo-sezione-referente"></p>
+                <div class="row g-3">
+                    <div class="col-md-6 campo-referente-nome">
+                        <label class="form-label">Nome</label>
+                        <input type="text" class="form-control" name="referente_nome">
+                    </div>
+                    <div class="col-md-6 campo-referente-nome">
+                        <label class="form-label">Cognome</label>
+                        <input type="text" class="form-control" name="referente_cognome">
+                    </div>
+                    <div class="col-md-6 campo-referente-contatto">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="referente_email" required>
+                    </div>
+                    <div class="col-md-6 campo-referente-contatto">
+                        <label class="form-label">Telefono</label>
+                        <input type="tel" class="form-control" name="referente_telefono">
+                    </div>
+                    <div class="col-md-6 campo-referente-contatto">
+                        <label class="form-label">Zona di provenienza</label>
+                        <input type="text" class="form-control" name="referente_zona_provenienza">
+                    </div>
+                    <div class="col-md-6 d-none campo-famiglia-esistente">
+                        <label class="form-label">Email del nucleo già iscritto</label>
+                        <input type="email" class="form-control" name="famiglia_esistente_email">
+                        <div class="form-text">Inserisci l'email usata per la prima iscrizione della famiglia.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -69,7 +72,7 @@
         <!-- Sezione Partecipanti -->
         <div class="card mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span class="fw-bold">Partecipanti</span>
+                <span class="fw-bold" id="titolo-sezione-partecipanti">Partecipanti</span>
                 <button type="button" class="btn btn-sm btn-primary" id="btn-aggiungi-partecipante">
                     + Aggiungi partecipante
                 </button>
@@ -178,6 +181,6 @@
 </template>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ url_for('static', path='/js/form_iscrizione.js') }}"></script>
+<script src="{{ url_for('static', path='/js/form_iscrizione.js') }}?v=2"></script>
 </body>
 </html>

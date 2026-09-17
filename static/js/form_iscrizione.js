@@ -77,21 +77,56 @@ document.addEventListener("DOMContentLoaded", function () {
     const campoFamigliaEsistente = document.querySelector(".campo-famiglia-esistente");
     const inputFamigliaEsistente = campoFamigliaEsistente.querySelector("input");
     const inputReferenteEmail = document.querySelector('input[name="referente_email"]');
+    const titoloSezioneReferente = document.getElementById("titolo-sezione-referente");
+    const sottotitoloSezioneReferente = document.getElementById("sottotitolo-sezione-referente");
+    const titoloSezionePartecipanti = document.getElementById("titolo-sezione-partecipanti");
+
+    const TESTI_MODALITA = {
+        singola: {
+            titoloReferente: "I tuoi dati di contatto",
+            sottotitoloReferente: "Nome e cognome verranno presi automaticamente dal partecipante qui sotto.",
+            titoloPartecipanti: "Il tuo partecipante",
+        },
+        famiglia: {
+            titoloReferente: "Referente del nucleo familiare",
+            sottotitoloReferente: "Questi dati identificano la famiglia e verranno usati per le comunicazioni.",
+            titoloPartecipanti: "Partecipanti della famiglia",
+        },
+        estensione: {
+            titoloReferente: "Identifica il tuo nucleo familiare",
+            sottotitoloReferente: "Inserisci l'email usata per la prima iscrizione: i nuovi partecipanti verranno aggiunti a quella famiglia.",
+            titoloPartecipanti: "Nuovi partecipanti da aggiungere al nucleo",
+        },
+    };
 
     function getTipoIscrizione() {
         const scelto = document.querySelector('input[name="tipo_iscrizione"]:checked');
         return scelto ? scelto.value : "singola";
     }
 
+    function impostaSezione(elementi, mostra) {
+        elementi.forEach((el) => {
+            el.classList.toggle("d-none", !mostra);
+            el.querySelectorAll("input, select, textarea").forEach((campo) => {
+                campo.disabled = !mostra;
+            });
+        });
+    }
+
     function aggiornaTipoIscrizione() {
         const tipo = getTipoIscrizione();
+        const testi = TESTI_MODALITA[tipo] || TESTI_MODALITA.singola;
 
-        campiReferenteNome.forEach((el) => el.classList.toggle("d-none", tipo !== "famiglia"));
-        campiReferenteContatto.forEach((el) => el.classList.toggle("d-none", tipo === "estensione"));
-        campoFamigliaEsistente.classList.toggle("d-none", tipo !== "estensione");
+        impostaSezione(campiReferenteNome, tipo === "famiglia");
+        impostaSezione(campiReferenteContatto, tipo !== "estensione");
+        impostaSezione([campoFamigliaEsistente], tipo === "estensione");
 
         inputFamigliaEsistente.required = tipo === "estensione";
         inputReferenteEmail.required = tipo !== "estensione";
+
+        titoloSezioneReferente.textContent = testi.titoloReferente;
+        sottotitoloSezioneReferente.textContent = testi.sottotitoloReferente;
+        titoloSezionePartecipanti.textContent = testi.titoloPartecipanti;
 
         btnAggiungi.classList.toggle("d-none", tipo === "singola");
 
