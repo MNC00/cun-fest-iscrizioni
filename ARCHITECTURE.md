@@ -11,7 +11,7 @@ app/
   schemas.py        Pydantic models per l'API di iscrizione
   calcolo.py        calcolo prezzo/pasti per partecipante
   pagamenti.py       sincronizzazione pagamento <-> prezzo
-  email_service.py  invio email via API HTTP Resend + builder HTML
+  email_service.py  invio email via Gmail API (OAuth2) + builder HTML
 templates/          viste Jinja2 (Bootstrap)
 static/             CSS/JS
 sql/                script SQL da applicare manualmente su Supabase
@@ -40,7 +40,7 @@ Da date arrivo/partenza + pasti dovuti + tariffa attiva della fascia → `prezzo
 Per ogni partecipante attivo, `calcola_pasti_per_giorno()` determina i pasti dovuti giorno per giorno (stessa logica del calcolo prezzo, a granularità giornaliera); i conteggi vengono aggregati sull'intero intervallo di date del festival.
 
 **Email** (`app/email_service.py`)
-Funzioni `costruisci_email_*` generano `{oggetto, html, testo}` per ogni caso (conferma, aggiornamento prezzo, annullamento singolo, annullamento nucleo, comunicazione di massa), fedeli nei contenuti al vecchio sistema Apps Script. `invia_email()` invia tramite l'API HTTP di Resend (`RESEND_API_KEY`/`RESEND_SENDER_EMAIL`) invece che via SMTP: alcuni hosting gratuiti (es. Render) bloccano le porte SMTP in uscita, l'API HTTP no. Conferma e aggiornamento prezzo sono per singolo partecipante (non per nucleo). Errori di invio sollevano `EmailServiceError`, loggato ma senza bloccare l'operazione DB già commit-ata.
+Funzioni `costruisci_email_*` generano `{oggetto, html, testo}` per ogni caso (conferma, aggiornamento prezzo, annullamento singolo, annullamento nucleo, comunicazione di massa), fedeli nei contenuti al vecchio sistema Apps Script. `invia_email()` invia tramite la Gmail API (HTTPS, OAuth2: `GMAIL_CLIENT_ID`/`GMAIL_CLIENT_SECRET`/`GMAIL_REFRESH_TOKEN`/`GMAIL_SENDER_EMAIL`) invece che via SMTP: alcuni hosting gratuiti (es. Render) bloccano le porte SMTP in uscita, l'API HTTPS no; l'email risulta inoltre autenticata come l'account Gmail configurato, evitando i rifiuti per DMARC che si avrebbero "spoofando" un mittente @gmail.com da un servizio terzo. Il refresh token si ottiene una tantum con `scripts/gmail_oauth_setup.py`. Conferma e aggiornamento prezzo sono per singolo partecipante (non per nucleo). Errori di invio sollevano `EmailServiceError`, loggato ma senza bloccare l'operazione DB già commit-ata.
 
 **Annullamento self-service** (`GET/POST /annulla/{token}`)
 Ogni partecipante riceve un `token_annullamento` univoco alla creazione, usato in un link incluso nelle email di conferma/aggiornamento (nessun login richiesto). Da quella pagina può annullare solo la propria iscrizione (indicando un nuovo referente per il nucleo, se restano altri iscritti) oppure annullare in un'unica soluzione tutto il nucleo familiare (un'unica email di recap con l'elenco di chi è stato annullato).

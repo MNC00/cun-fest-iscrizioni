@@ -3,25 +3,32 @@
 I contenuti (testo, struttura, formulazioni) replicano fedelmente quelli del
 vecchio sistema (Google Apps Script, Domain/Email.js): stesso IBAN, stesso
 paragrafo pagamento, stesse varianti "solo pranzo CUN" / prezzo noto o meno.
-L'invio vero e proprio avviene via API HTTP di Resend (https://resend.com):
-niente SMTP, quindi funziona anche sui piani gratuiti di hosting (es. Render)
-che bloccano il traffico in uscita sulle porte SMTP 25/465/587.
+L'invio vero e proprio avviene tramite la Gmail API di Google via HTTPS
+(OAuth2, non SMTP): l'email risulta autenticata come l'account Gmail
+configurato (nessun problema di spam/DMARC) e non serve alcuna porta SMTP,
+quindi funziona anche sui piani gratuiti di hosting (es. Render) che
+bloccano il traffico in uscita sulle porte 25/465/587.
 """
+import base64
 import logging
 import os
 import re
 from datetime import date
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Iterable
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
-RESEND_API_URL = "https://api.resend.com/emails"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send"
 
 LINK_SITO_CUNFEST = "https://sites.google.com/view/pgstimm/cunfest?authuser=0"
 IBAN_CUNFEST = "IT87W0200859280000003853446"
 INTESTATARIO_CUNFEST = "SCUOLA APOSTOLICA BERTONI"
+
 
 _MESI_ITALIANO = [
     "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
@@ -306,8 +313,51 @@ def costruisci_email_massa(nome: str, oggetto: str, testo_libero: str) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Invio via API HTTP Resend
+# Invio via Gmail API (OAuth2)
 # --------------------------------------------------------------------------
+
+def _ottieni_access_token() -> str:
+    """Scambia il refresh token Google con un access token valido (via HTTPS).
+
+    Richiede GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN,
+    ottenuti una tantum con lo script scripts/gmail_oauth_setup.py.
+    """
+    client_id = os.getenv("GMAIL_CLIENT_ID")
+    client_secret = os.getenv("GMAIL_CLIENT_SECRET")
+    refresh_token = os.getenv("GMAIL_REFRESH_TOKEN")
+
+    if not client_id or not client_secret or not refresh_token:
+        raise EmailServiceError(
+            "GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET e GMAIL_REFRESH_TOKEN devono essere "
+            "configurate come variabili d'ambiente (vedi scripts/gmail_oauth_setup.py)."
+        )
+
+    try:
+        risposta = httpx.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Errore di rete nel refresh del token Gmail: %s", exc)
+        raise EmailServiceError(f"Invio email fallito: impossibile contattare Google ({exc})") from exc
+
+    if risposta.status_code >= 400:
+        logger.error("Refresh del token Gmail fallito (status %s): %s", risposta.status_code, risposta.text)
+        raise EmailServiceError(
+            f"Invio email fallito: refresh token Google non valido o revocato ({risposta.text})"
+        )
+
+    access_token = risposta.json().get("access_token")
+    if not access_token:
+        raise EmailServiceError("Invio email fallito: risposta di Google priva di access_token.")
+    return access_token
+
 
 def invia_email(
     destinatario: str,
@@ -315,56 +365,55 @@ def invia_email(
     contenuto_html: str,
     contenuto_testo: str | None = None,
 ) -> None:
-    """Invia una email tramite l'API HTTP di Resend (https://resend.com).
+    """Invia una email tramite la Gmail API (HTTPS, OAuth2), autenticata come
+    l'account Gmail configurato — non SMTP, quindi funziona anche su hosting
+    gratuiti che bloccano le porte SMTP in uscita.
 
     Richiede le variabili d'ambiente:
-    - RESEND_API_KEY: API key generata dalla dashboard Resend.
-    - RESEND_SENDER_EMAIL: indirizzo mittente verificato su Resend (in fase di
-      test può essere "onboarding@resend.dev"). Può includere anche il nome
-      visualizzato nel formato "CUN Fest <onboarding@resend.dev>".
-
-    Usare un'API HTTP (anziché SMTP) evita il blocco delle porte SMTP in
-    uscita applicato da alcuni hosting gratuiti (es. Render dal 2025).
+    - GMAIL_CLIENT_ID / GMAIL_CLIENT_SECRET: credenziali OAuth create su Google
+      Cloud Console (tipo "Desktop app").
+    - GMAIL_REFRESH_TOKEN: ottenuto una tantum con scripts/gmail_oauth_setup.py.
+    - GMAIL_SENDER_EMAIL: indirizzo Gmail mittente (l'account autenticato),
+      es. "CUN Fest <iscrizionicunfest@gmail.com>".
 
     Se contenuto_testo non è fornito, viene derivato automaticamente da contenuto_html.
     """
-    api_key = os.getenv("RESEND_API_KEY")
-    sender_email = os.getenv("RESEND_SENDER_EMAIL")
+    sender_email = os.getenv("GMAIL_SENDER_EMAIL")
+    if not sender_email:
+        raise EmailServiceError("GMAIL_SENDER_EMAIL deve essere configurata come variabile d'ambiente.")
 
-    if not api_key or not sender_email:
-        raise EmailServiceError(
-            "RESEND_API_KEY e RESEND_SENDER_EMAIL devono essere configurate come variabili d'ambiente."
-        )
+    access_token = _ottieni_access_token()
 
-    payload = {
-        "from": sender_email,
-        "to": [destinatario],
-        "subject": oggetto,
-        "html": contenuto_html,
-        "text": contenuto_testo or _html_a_testo(contenuto_html),
-    }
+    messaggio = MIMEMultipart("alternative")
+    messaggio["Subject"] = oggetto
+    messaggio["From"] = sender_email
+    messaggio["To"] = destinatario
+    messaggio.attach(MIMEText(contenuto_testo or _html_a_testo(contenuto_html), "plain", "utf-8"))
+    messaggio.attach(MIMEText(contenuto_html, "html", "utf-8"))
+
+    raw = base64.urlsafe_b64encode(messaggio.as_bytes()).decode("ascii")
 
     try:
         risposta = httpx.post(
-            RESEND_API_URL,
+            GMAIL_SEND_URL,
             headers={
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
             },
-            json=payload,
+            json={"raw": raw},
             timeout=10.0,
         )
     except httpx.HTTPError as exc:
-        logger.error("Errore di rete nell'invio email a %s tramite Resend: %s", destinatario, exc)
-        raise EmailServiceError(f"Invio email fallito: errore di rete verso Resend ({exc})") from exc
+        logger.error("Errore di rete nell'invio email a %s tramite Gmail API: %s", destinatario, exc)
+        raise EmailServiceError(f"Invio email fallito: errore di rete verso Gmail API ({exc})") from exc
 
     if risposta.status_code >= 400:
         dettaglio = risposta.text
         logger.error(
-            "Resend ha rifiutato l'invio a %s (status %s): %s", destinatario, risposta.status_code, dettaglio
+            "Gmail API ha rifiutato l'invio a %s (status %s): %s", destinatario, risposta.status_code, dettaglio
         )
         raise EmailServiceError(
-            f"Invio email fallito: Resend ha risposto con errore {risposta.status_code} ({dettaglio})"
+            f"Invio email fallito: Gmail API ha risposto con errore {risposta.status_code} ({dettaglio})"
         )
 
     logger.info("Email inviata con successo a %s (oggetto: %s)", destinatario, oggetto)

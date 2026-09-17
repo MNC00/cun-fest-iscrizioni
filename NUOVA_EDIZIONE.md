@@ -53,7 +53,7 @@ Verifica/aggiorna in `.env` (locale) e nelle Environment Variables di Render
 (produzione):
 
 - `BASE_URL` — se cambia il dominio dell'edizione.
-- `RESEND_API_KEY` / `RESEND_SENDER_EMAIL` — se cambia il mittente ufficiale.
+- `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` / `GMAIL_REFRESH_TOKEN` / `GMAIL_SENDER_EMAIL` — se cambia il mittente ufficiale (rigenerare il refresh token con `scripts/gmail_oauth_setup.py` per il nuovo account).
 - `DATABASE_URL` / `SECRET_KEY` — di norma invariati tra edizioni.
 
 ## 5. Verifica finale

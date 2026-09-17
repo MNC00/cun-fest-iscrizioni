@@ -4,7 +4,7 @@ App FastAPI per la gestione delle iscrizioni al CUN Fest: form pubblico di iscri
 
 ## Stack
 
-Python 3, FastAPI, SQLAlchemy, PostgreSQL (Supabase), Jinja2 + Bootstrap, Resend (email transazionali via API HTTP).
+Python 3, FastAPI, SQLAlchemy, PostgreSQL (Supabase), Jinja2 + Bootstrap, Gmail API via OAuth2 (email transazionali).
 
 ## Setup locale
 
@@ -24,8 +24,9 @@ App su `http://127.0.0.1:8000`.
 |---|---|
 | `DATABASE_URL` | Connection string PostgreSQL (Supabase) |
 | `SECRET_KEY` | Chiave per firmare i cookie di sessione operatore |
-| `RESEND_API_KEY` | API key generata dalla dashboard di [resend.com](https://resend.com) |
-| `RESEND_SENDER_EMAIL` | Mittente verificato su Resend, es. `CUN Fest <onboarding@resend.dev>` |
+| `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | Credenziali OAuth create su Google Cloud Console (vedi `scripts/gmail_oauth_setup.py`) |
+| `GMAIL_REFRESH_TOKEN` | Ottenuto una tantum eseguendo `scripts/gmail_oauth_setup.py` |
+| `GMAIL_SENDER_EMAIL` | Mittente, es. `CUN Fest <iscrizionicunfest@gmail.com>` |
 | `BASE_URL` | URL base dell'app (usato nei link email) |
 
 ## Database
@@ -52,5 +53,6 @@ Ogni azione rilevante viene tracciata in `log_eventi`.
 ## Script di supporto
 
 - `scripts/crea_operatore.py` — crea/aggiorna un account operatore (password, nome, stato attivo).
+- `scripts/gmail_oauth_setup.py` — da eseguire una tantum in locale per ottenere `GMAIL_REFRESH_TOKEN` (vedi commenti nello script per il setup su Google Cloud Console).
 
 Per i dettagli tecnici (modelli, moduli, flussi) vedi [ARCHITECTURE.md](ARCHITECTURE.md).
