@@ -20,7 +20,7 @@
             <h2 class="h5 mb-3">Filtra destinatari</h2>
             <form method="post" action="/comunicazioni">
                 <div class="row g-3 mb-3">
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label" for="fascia">Fascia</label>
                         <select class="form-select" id="fascia" name="fascia">
                             <option value="" {% if not filtri.fascia %}selected{% endif %}>Tutte</option>
@@ -29,7 +29,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label" for="stato_iscrizione">Stato iscrizione</label>
                         <select class="form-select" id="stato_iscrizione" name="stato_iscrizione">
                             <option value="" {% if not filtri.stato_iscrizione %}selected{% endif %}>Tutti</option>
@@ -38,7 +38,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label" for="tipo_evento">Evento</label>
                         <select class="form-select" id="tipo_evento" name="tipo_evento">
                             <option value="" {% if not filtri.tipo_evento %}selected{% endif %}>Tutti</option>
@@ -47,14 +47,9 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label" for="zona_provenienza">Zona di provenienza</label>
-                        <input type="text" class="form-control" id="zona_provenienza" name="zona_provenienza"
-                               placeholder="es. Sassari" value="{{ filtri.zona_provenienza or '' }}">
-                    </div>
                 </div>
 
-                <button type="submit" name="azione" value="anteprima" class="btn btn-outline-secondary mb-3">
+                <button type="submit" name="azione" value="anteprima" class="btn btn-outline-secondary mb-3" formnovalidate>
                     Aggiorna anteprima
                 </button>
 

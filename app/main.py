@@ -948,17 +948,13 @@ def segna_pagamento_pagato(
 
 
 
-def _query_destinatari(
-    db: Session, fascia: str, stato_iscrizione: str, zona_provenienza: str, tipo_evento: str = ""
-):
+def _query_destinatari(db: Session, fascia: str, stato_iscrizione: str, tipo_evento: str = ""):
     """Costruisce la query dei partecipanti destinatari in base ai filtri di comunicazione."""
     query = db.query(Partecipante).join(Famiglia)
     if fascia:
         query = query.filter(Partecipante.fascia_prezzo == fascia)
     if stato_iscrizione:
         query = query.filter(Partecipante.stato_iscrizione == stato_iscrizione)
-    if zona_provenienza:
-        query = query.filter(Partecipante.zona_provenienza.ilike(f"%{zona_provenienza}%"))
     if tipo_evento:
         query = query.filter(Partecipante.tipo_evento == tipo_evento)
     return query
@@ -970,7 +966,7 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    numero_destinatari = _query_destinatari(db, "", "", "", "").count()
+    numero_destinatari = _query_destinatari(db, "", "", "").count()
 
     return templates.TemplateResponse(
         request=request,
@@ -978,7 +974,7 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
         context={
             "title": "Comunicazioni",
             "username": username,
-            "filtri": {"fascia": "", "stato_iscrizione": "", "zona_provenienza": "", "tipo_evento": ""},
+            "filtri": {"fascia": "", "stato_iscrizione": "", "tipo_evento": ""},
             "numero_destinatari": numero_destinatari,
             "oggetto": "",
             "testo_libero": "",
@@ -993,7 +989,6 @@ def comunicazioni_submit(
     azione: str = Form(...),
     fascia: str = Form(""),
     stato_iscrizione: str = Form(""),
-    zona_provenienza: str = Form(""),
     tipo_evento: str = Form(""),
     oggetto: str = Form(""),
     testo_libero: str = Form(""),
@@ -1006,11 +1001,10 @@ def comunicazioni_submit(
     filtri = {
         "fascia": fascia,
         "stato_iscrizione": stato_iscrizione,
-        "zona_provenienza": zona_provenienza,
         "tipo_evento": tipo_evento,
     }
 
-    destinatari = _query_destinatari(db, fascia, stato_iscrizione, zona_provenienza, tipo_evento).all()
+    destinatari = _query_destinatari(db, fascia, stato_iscrizione, tipo_evento).all()
     risultato = None
 
     if azione == "invia":
