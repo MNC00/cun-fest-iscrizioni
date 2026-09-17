@@ -101,6 +101,16 @@ document.addEventListener("DOMContentLoaded", function () {
             checkCunFest.addEventListener("change", aggiornaVincoliData);
         }
 
+        function aggiornaVisibilitaCenaDomenica() {
+            const boscoAttivo = checkBoscoDomenica.checked;
+            msgBoscoDomenica.classList.toggle("d-none", !boscoAttivo);
+            campoCenaDomenica.classList.toggle("d-none", !boscoAttivo);
+            campoCenaDomenica.querySelectorAll("input").forEach((radio) => {
+                radio.disabled = !boscoAttivo;
+                if (!boscoAttivo) radio.checked = false;
+            });
+        }
+
         function aggiornaModalitaIscrizione() {
             const isPranzoCun = checkModalitaPranzo && checkModalitaPranzo.checked;
             blocchiEventiNormali.forEach((el) => {
@@ -110,7 +120,13 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
             });
             blocchiPranzoCun.forEach((el) => el.classList.toggle("d-none", !isPranzoCun));
-            if (!isPranzoCun) aggiornaVincoliData();
+            if (!isPranzoCun) {
+                aggiornaVincoliData();
+                // Il toggle qui sopra su blocchiEventiNormali rimuove "d-none" anche dal
+                // blocco cena-domenica (ne fa parte): va ripristinato in base al flag
+                // "Vorrei dormire a Bosco la domenica sera", non reso sempre visibile.
+                aggiornaVisibilitaCenaDomenica();
+            }
         }
 
         if (checkModalitaNormale && checkModalitaPranzo) {
@@ -119,14 +135,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
         aggiornaModalitaIscrizione();
 
-        checkBoscoDomenica.addEventListener("change", function () {
-            msgBoscoDomenica.classList.toggle("d-none", !checkBoscoDomenica.checked);
-            campoCenaDomenica.classList.toggle("d-none", !checkBoscoDomenica.checked);
-            campoCenaDomenica.querySelectorAll("input").forEach((radio) => {
-                radio.disabled = !checkBoscoDomenica.checked;
-                if (!checkBoscoDomenica.checked) radio.checked = false;
-            });
-        });
+        checkBoscoDomenica.addEventListener("change", aggiornaVisibilitaCenaDomenica);
 
         btnRimuovi.addEventListener("click", function () {
             blocco.remove();
