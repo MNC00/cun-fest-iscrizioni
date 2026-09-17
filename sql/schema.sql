@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS partecipanti (
     note TEXT,
     fascia_prezzo TEXT DEFAULT 'Generale',
     stato_iscrizione TEXT DEFAULT 'Inviata',
+    token_annullamento TEXT UNIQUE,
     notti_calcolate INTEGER,
     prezzo_lordo NUMERIC,
     sconto_eta NUMERIC,
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS partecipanti (
 );
 
 CREATE INDEX IF NOT EXISTS ix_partecipanti_famiglia_id ON partecipanti(famiglia_id);
+CREATE INDEX IF NOT EXISTS ix_partecipanti_token_annullamento ON partecipanti(token_annullamento);
 
 CREATE TABLE IF NOT EXISTS pagamenti (
     id SERIAL PRIMARY KEY,

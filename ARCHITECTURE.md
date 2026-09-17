@@ -40,7 +40,10 @@ Da date arrivo/partenza + pasti dovuti + tariffa attiva della fascia → `prezzo
 Per ogni partecipante attivo, `calcola_pasti_per_giorno()` determina i pasti dovuti giorno per giorno (stessa logica del calcolo prezzo, a granularità giornaliera); i conteggi vengono aggregati sull'intero intervallo di date del festival.
 
 **Email** (`app/email_service.py`)
-Funzioni `costruisci_email_*` generano l'HTML, `invia_email()` invia via SMTP (smtplib, SSL) usando le credenziali Google (`SMTP_USER`/`SMTP_PASSWORD`, App Password). I casi d'uso (conferma iscrizione, aggiornamento prezzo, annullamento, comunicazione di massa) sono wrapper su queste due primitive. Errori di invio sollevano `EmailServiceError`, loggato ma senza bloccare l'operazione DB già commit-ata.
+Funzioni `costruisci_email_*` generano `{oggetto, html, testo}` per ogni caso (conferma, aggiornamento prezzo, annullamento singolo, annullamento nucleo, comunicazione di massa), fedeli nei contenuti al vecchio sistema Apps Script. `invia_email()` invia via SMTP (smtplib, SSL) usando le credenziali Google (`SMTP_USER`/`SMTP_PASSWORD`, App Password). Conferma e aggiornamento prezzo sono per singolo partecipante (non per nucleo). Errori di invio sollevano `EmailServiceError`, loggato ma senza bloccare l'operazione DB già commit-ata.
+
+**Annullamento self-service** (`GET/POST /annulla/{token}`)
+Ogni partecipante riceve un `token_annullamento` univoco alla creazione, usato in un link incluso nelle email di conferma/aggiornamento (nessun login richiesto). Da quella pagina può annullare solo la propria iscrizione (indicando un nuovo referente per il nucleo, se restano altri iscritti) oppure annullare in un'unica soluzione tutto il nucleo familiare (un'unica email di recap con l'elenco di chi è stato annullato).
 
 **Autenticazione operatori** (`app/auth.py`)
 Password hashate con bcrypt. Sessione: token firmato (`itsdangerous`, scadenza 8h) salvato in cookie httponly. `get_current_operatore_username(request)` legge il cookie in ogni rotta protetta; se assente/non valido → redirect a `/login`.

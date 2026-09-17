@@ -50,6 +50,7 @@ class Partecipante(Base):
     note = Column(Text)
     fascia_prezzo = Column(String, default="Generale")
     stato_iscrizione = Column(String, default="Inviata")
+    token_annullamento = Column(String, unique=True, index=True)
     notti_calcolate = Column(Integer)
     prezzo_lordo = Column(Numeric)
     sconto_eta = Column(Numeric)

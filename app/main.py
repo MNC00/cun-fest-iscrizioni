@@ -1,5 +1,7 @@
 from datetime import date, timedelta
 import logging
+import os
+import uuid
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -19,11 +21,13 @@ from app.calcolo import CalcoloPrezzoError, calcola_prezzo_partecipante, genera_
 from app.database import get_db
 from app.email_service import (
     EmailServiceError,
-    costruisci_email_annullamento,
-    costruisci_email_massa,
+    formatta_data_italiana,
+    formatta_pasto,
     invia_aggiornamento_prezzo,
+    invia_annullamento,
+    invia_annullamento_nucleo,
+    invia_comunicazione_massa,
     invia_conferma_iscrizione,
-    invia_email,
 )
 from app.models import Famiglia, LogEvento, Operatore, Pagamento, Partecipante, Tariffa
 from app.pagamenti import sincronizza_pagamento
@@ -37,6 +41,28 @@ app = FastAPI(title="CUN Fest Iscrizioni")
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
+    """Costruisce il contesto per le email di conferma/aggiornamento prezzo di un partecipante."""
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+    link_annullamento = (
+        f"{base_url}/annulla/{partecipante.token_annullamento}"
+        if base_url and partecipante.token_annullamento
+        else None
+    )
+    return {
+        "nome": partecipante.nome,
+        "anno": (partecipante.data_arrivo or date.today()).year,
+        "hasPrezzo": partecipante.prezzo_netto is not None,
+        "isSoloPranzo": bool(partecipante.flag_solo_pranzo_cun),
+        "dataArrivoFormattata": formatta_data_italiana(partecipante.data_arrivo),
+        "pastoArrivo": formatta_pasto(partecipante.pasto_arrivo),
+        "dataPartenzaFormattata": formatta_data_italiana(partecipante.data_partenza),
+        "pastoPartenza": formatta_pasto(partecipante.pasto_partenza),
+        "prezzo": float(partecipante.prezzo_netto) if partecipante.prezzo_netto is not None else None,
+        "linkAnnullamento": link_annullamento,
+    }
 
 
 @app.get("/")
@@ -90,6 +116,7 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
             db.flush()  # ottiene famiglia.id prima del commit
 
         partecipanti_ids = []
+        partecipanti_creati = []
         for p in payload.partecipanti:
             partecipante = Partecipante(
                 famiglia_id=famiglia.id,
@@ -105,32 +132,26 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
                 flag_parliamo_solo_lunedi=p.flag_parliamo_solo_lunedi,
                 note=p.note,
                 fascia_prezzo=p.fascia_prezzo,
+                token_annullamento=uuid.uuid4().hex,
             )
             db.add(partecipante)
             db.flush()
             sincronizza_pagamento(partecipante, db)
             partecipanti_ids.append(partecipante.id)
+            partecipanti_creati.append(partecipante)
 
         db.commit()
 
-        try:
-            partecipanti_list = [
-                {
-                    "nome": p.nome,
-                    "cognome": p.cognome,
-                    "data_arrivo": p.data_arrivo.isoformat() if p.data_arrivo else "",
-                    "data_partenza": p.data_partenza.isoformat() if p.data_partenza else "",
-                }
-                for p in payload.partecipanti
-            ]
-            invia_conferma_iscrizione(
-                referente_nome=famiglia.referente_nome,
-                referente_cognome=famiglia.referente_cognome,
-                email=famiglia.email,
-                partecipanti_list=partecipanti_list,
-            )
-        except EmailServiceError as exc:
-            logger.error("Invio email di conferma fallito per famiglia %s: %s", famiglia.id, exc)
+        for partecipante in partecipanti_creati:
+            try:
+                invia_conferma_iscrizione(
+                    email=famiglia.email,
+                    contesto=_contesto_email_partecipante(partecipante),
+                )
+            except EmailServiceError as exc:
+                logger.error(
+                    "Invio email di conferma fallito per partecipante %s: %s", partecipante.id, exc
+                )
 
         return {
             "status": "ok",
@@ -223,23 +244,10 @@ def _invia_email_aggiornamento_prezzo(partecipante: Partecipante, dettagli_calco
     modifica iscrizione). Un eventuale errore di invio viene solo loggato,
     senza far fallire l'operazione di calcolo già commit-ata.
     """
-    dettaglio_email = {
-        "notti": dettagli_calcolo.get("notti"),
-        "pasti": (
-            f"{dettagli_calcolo.get('colazioni', 0)} colazioni, "
-            f"{dettagli_calcolo.get('pranzi', 0)} pranzi, "
-            f"{dettagli_calcolo.get('cene', 0)} cene"
-        ),
-        "fascia": dettagli_calcolo.get("fascia_prezzo"),
-        "sconto": f"{dettagli_calcolo.get('sconto_eta', 0):.2f} €",
-    }
-
     try:
         invia_aggiornamento_prezzo(
             email=partecipante.famiglia.email,
-            partecipante_nome=f"{partecipante.nome} {partecipante.cognome}",
-            prezzo_netto=dettagli_calcolo.get("prezzo_netto", 0),
-            dettaglio=dettaglio_email,
+            contesto=_contesto_email_partecipante(partecipante),
         )
     except EmailServiceError as exc:
         logger.error(
@@ -456,17 +464,174 @@ def annulla_iscrizione(partecipante_id: int, request: Request, db: Session = Dep
     db.commit()
 
     try:
-        contenuto_html = costruisci_email_annullamento({"nome": partecipante.nome})
-        invia_email(
-            destinatario=partecipante.famiglia.email,
-            oggetto="Annullamento iscrizione CUN FEST",
-            contenuto_html=contenuto_html,
-        )
+        invia_annullamento(email=partecipante.famiglia.email, nome=partecipante.nome)
         msg = f"Iscrizione di {partecipante.nome} {partecipante.cognome} annullata. Email inviata."
     except EmailServiceError as exc:
         msg = f"Iscrizione annullata, ma invio email fallito: {exc}"
 
     return RedirectResponse(url=f"/dashboard?msg={msg}", status_code=303)
+
+
+@app.get("/annulla/{token}")
+def annulla_self_service_form(token: str, request: Request, db: Session = Depends(get_db)):
+    """Pagina pubblica (nessun login) che permette al partecipante di annullare la propria
+    iscrizione, singolarmente o insieme a tutto il nucleo familiare."""
+    partecipante = (
+        db.query(Partecipante)
+        .options(joinedload(Partecipante.famiglia).joinedload(Famiglia.partecipanti))
+        .filter(Partecipante.token_annullamento == token)
+        .first()
+    )
+    if not partecipante:
+        raise HTTPException(status_code=404, detail="Link di annullamento non valido.")
+
+    if partecipante.stato_iscrizione == "Annullata":
+        return templates.TemplateResponse(
+            request=request,
+            name="annulla_self_service.html",
+            context={
+                "title": "Annulla iscrizione",
+                "partecipante": partecipante,
+                "altri_partecipanti": [],
+                "gia_annullata": True,
+            },
+        )
+
+    altri_partecipanti = [
+        p
+        for p in partecipante.famiglia.partecipanti
+        if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+    ]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="annulla_self_service.html",
+        context={
+            "title": "Annulla iscrizione",
+            "partecipante": partecipante,
+            "altri_partecipanti": altri_partecipanti,
+            "gia_annullata": False,
+        },
+    )
+
+
+@app.post("/annulla/{token}")
+def annulla_self_service_submit(
+    token: str,
+    request: Request,
+    azione: str = Form(...),
+    nuovo_referente_nome: str = Form(""),
+    nuovo_referente_cognome: str = Form(""),
+    nuovo_referente_email: str = Form(""),
+    nuovo_referente_telefono: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    partecipante = (
+        db.query(Partecipante)
+        .options(joinedload(Partecipante.famiglia).joinedload(Famiglia.partecipanti))
+        .filter(Partecipante.token_annullamento == token)
+        .first()
+    )
+    if not partecipante:
+        raise HTTPException(status_code=404, detail="Link di annullamento non valido.")
+
+    famiglia = partecipante.famiglia
+    messaggio_errore = None
+
+    if azione == "nucleo":
+        attivi = [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata"]
+        nomi_annullati = []
+        for p in attivi:
+            p.stato_iscrizione = "Annullata"
+            nomi_annullati.append(f"{p.nome} {p.cognome}")
+            db.add(
+                LogEvento(
+                    oggetto_tipo="partecipante",
+                    oggetto_id=p.id,
+                    azione="iscrizione_annullata",
+                    operatore="self-service",
+                    dettagli={"modalita": "nucleo", "famiglia_id": famiglia.id},
+                )
+            )
+        db.commit()
+
+        if nomi_annullati:
+            try:
+                invia_annullamento_nucleo(email=famiglia.email, nomi=nomi_annullati)
+            except EmailServiceError as exc:
+                logger.error("Invio email annullamento nucleo fallito per famiglia %s: %s", famiglia.id, exc)
+
+    elif azione == "singola":
+        altri_attivi = [
+            p for p in famiglia.partecipanti if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+        ]
+
+        if altri_attivi and not (nuovo_referente_nome and nuovo_referente_cognome and nuovo_referente_email):
+            messaggio_errore = (
+                "Dato che restano altri iscritti nel nucleo, indica nome, cognome ed email del "
+                "nuovo referente per il nucleo familiare."
+            )
+        else:
+            partecipante.stato_iscrizione = "Annullata"
+            db.add(
+                LogEvento(
+                    oggetto_tipo="partecipante",
+                    oggetto_id=partecipante.id,
+                    azione="iscrizione_annullata",
+                    operatore="self-service",
+                    dettagli={"modalita": "singola", "famiglia_id": famiglia.id},
+                )
+            )
+
+            if altri_attivi:
+                famiglia.referente_nome = nuovo_referente_nome
+                famiglia.referente_cognome = nuovo_referente_cognome
+                famiglia.email = nuovo_referente_email
+                famiglia.telefono = nuovo_referente_telefono or famiglia.telefono
+
+            db.commit()
+
+            try:
+                invia_annullamento(email=famiglia.email, nome=partecipante.nome)
+            except EmailServiceError as exc:
+                logger.error(
+                    "Invio email annullamento singola fallito per partecipante %s: %s",
+                    partecipante.id,
+                    exc,
+                )
+    else:
+        messaggio_errore = "Azione non riconosciuta."
+
+    if messaggio_errore:
+        altri_partecipanti = [
+            p
+            for p in famiglia.partecipanti
+            if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+        ]
+        return templates.TemplateResponse(
+            request=request,
+            name="annulla_self_service.html",
+            context={
+                "title": "Annulla iscrizione",
+                "partecipante": partecipante,
+                "altri_partecipanti": altri_partecipanti,
+                "gia_annullata": False,
+                "errore": messaggio_errore,
+            },
+            status_code=400,
+        )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="annulla_self_service.html",
+        context={
+            "title": "Annulla iscrizione",
+            "partecipante": partecipante,
+            "altri_partecipanti": [],
+            "gia_annullata": True,
+            "esito_ok": True,
+        },
+    )
 
 
 @app.get("/pagamenti")
@@ -597,11 +762,11 @@ def comunicazioni_submit(
         fallite = 0
         for partecipante in destinatari:
             try:
-                contenuto_html = costruisci_email_massa(partecipante.nome, oggetto, testo_libero)
-                invia_email(
-                    destinatario=partecipante.famiglia.email,
+                invia_comunicazione_massa(
+                    email=partecipante.famiglia.email,
+                    nome=partecipante.nome,
                     oggetto=oggetto,
-                    contenuto_html=contenuto_html,
+                    testo_libero=testo_libero,
                 )
                 log = LogEvento(
                     oggetto_tipo="partecipante",
