@@ -3,22 +3,21 @@
 I contenuti (testo, struttura, formulazioni) replicano fedelmente quelli del
 vecchio sistema (Google Apps Script, Domain/Email.js): stesso IBAN, stesso
 paragrafo pagamento, stesse varianti "solo pranzo CUN" / prezzo noto o meno.
-L'invio vero e proprio avviene via SMTP Google (Gmail), non più tramite Brevo.
+L'invio vero e proprio avviene via API HTTP di Resend (https://resend.com):
+niente SMTP, quindi funziona anche sui piani gratuiti di hosting (es. Render)
+che bloccano il traffico in uscita sulle porte SMTP 25/465/587.
 """
 import logging
 import os
 import re
-import smtplib
-import ssl
 from datetime import date
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from typing import Iterable
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+RESEND_API_URL = "https://api.resend.com/emails"
 
 LINK_SITO_CUNFEST = "https://sites.google.com/view/pgstimm/cunfest?authuser=0"
 IBAN_CUNFEST = "IT87W0200859280000003853446"
@@ -307,7 +306,7 @@ def costruisci_email_massa(nome: str, oggetto: str, testo_libero: str) -> dict:
 
 
 # --------------------------------------------------------------------------
-# Invio SMTP
+# Invio via API HTTP Resend
 # --------------------------------------------------------------------------
 
 def invia_email(
@@ -316,49 +315,57 @@ def invia_email(
     contenuto_html: str,
     contenuto_testo: str | None = None,
 ) -> None:
-    """Invia una email tramite il servizio SMTP di Google (Gmail/Workspace).
+    """Invia una email tramite l'API HTTP di Resend (https://resend.com).
 
     Richiede le variabili d'ambiente:
-    - SMTP_USER: indirizzo Gmail mittente, usato anche per l'autenticazione.
-    - SMTP_PASSWORD: password per le app di Google (non la password normale
-      dell'account: va generata da https://myaccount.google.com/apppasswords,
-      richiede la verifica in due passaggi attiva sull'account).
-    Facoltative:
-    - SMTP_SENDER_EMAIL: indirizzo mostrato come mittente, se diverso da SMTP_USER.
-    - SMTP_HOST / SMTP_PORT: default smtp.gmail.com:465 (SSL).
+    - RESEND_API_KEY: API key generata dalla dashboard Resend.
+    - RESEND_SENDER_EMAIL: indirizzo mittente verificato su Resend (in fase di
+      test può essere "onboarding@resend.dev"). Può includere anche il nome
+      visualizzato nel formato "CUN Fest <onboarding@resend.dev>".
+
+    Usare un'API HTTP (anziché SMTP) evita il blocco delle porte SMTP in
+    uscita applicato da alcuni hosting gratuiti (es. Render dal 2025).
 
     Se contenuto_testo non è fornito, viene derivato automaticamente da contenuto_html.
     """
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_password = os.getenv("SMTP_PASSWORD")
-    sender_email = os.getenv("SMTP_SENDER_EMAIL") or smtp_user
+    api_key = os.getenv("RESEND_API_KEY")
+    sender_email = os.getenv("RESEND_SENDER_EMAIL")
 
-    if not smtp_user or not smtp_password:
+    if not api_key or not sender_email:
         raise EmailServiceError(
-            "SMTP_USER e SMTP_PASSWORD devono essere configurate come variabili d'ambiente."
+            "RESEND_API_KEY e RESEND_SENDER_EMAIL devono essere configurate come variabili d'ambiente."
         )
 
-    messaggio = MIMEMultipart("alternative")
-    messaggio["Subject"] = oggetto
-    messaggio["From"] = sender_email
-    messaggio["To"] = destinatario
-    messaggio.attach(MIMEText(contenuto_testo or _html_a_testo(contenuto_html), "plain", "utf-8"))
-    messaggio.attach(MIMEText(contenuto_html, "html", "utf-8"))
+    payload = {
+        "from": sender_email,
+        "to": [destinatario],
+        "subject": oggetto,
+        "html": contenuto_html,
+        "text": contenuto_testo or _html_a_testo(contenuto_html),
+    }
 
     try:
-        contesto_ssl = ssl.create_default_context()
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=contesto_ssl, timeout=10.0) as server:
-            server.login(smtp_user, smtp_password)
-            server.sendmail(sender_email, [destinatario], messaggio.as_string())
-    except smtplib.SMTPAuthenticationError as exc:
-        logger.error("Errore di autenticazione SMTP nell'invio email a %s: %s", destinatario, exc)
+        risposta = httpx.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=10.0,
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Errore di rete nell'invio email a %s tramite Resend: %s", destinatario, exc)
+        raise EmailServiceError(f"Invio email fallito: errore di rete verso Resend ({exc})") from exc
+
+    if risposta.status_code >= 400:
+        dettaglio = risposta.text
+        logger.error(
+            "Resend ha rifiutato l'invio a %s (status %s): %s", destinatario, risposta.status_code, dettaglio
+        )
         raise EmailServiceError(
-            "Invio email fallito: credenziali SMTP non valide (verifica SMTP_USER/SMTP_PASSWORD "
-            "e che sia stata usata una password per le app di Google)."
-        ) from exc
-    except (smtplib.SMTPException, OSError) as exc:
-        logger.error("Errore SMTP nell'invio email a %s: %s", destinatario, exc)
-        raise EmailServiceError(f"Invio email fallito: errore SMTP ({exc})") from exc
+            f"Invio email fallito: Resend ha risposto con errore {risposta.status_code} ({dettaglio})"
+        )
 
     logger.info("Email inviata con successo a %s (oggetto: %s)", destinatario, oggetto)
 
