@@ -21,14 +21,26 @@
 
     <ul class="nav nav-tabs mb-3">
         <li class="nav-item">
-            <a class="nav-link {% if evento_corrente == 'tutti' %}active{% endif %}" href="/dashboard?evento=tutti">Tutti gli eventi</a>
+            <a class="nav-link {% if evento_corrente == 'tutti' %}active{% endif %}" href="/dashboard?evento=tutti&stato={{ stato_corrente }}">Tutti gli eventi</a>
         </li>
         {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
         <li class="nav-item">
-            <a class="nav-link {% if evento_corrente == valore %}active{% endif %}" href="/dashboard?evento={{ valore }}">{{ etichetta }}</a>
+            <a class="nav-link {% if evento_corrente == valore %}active{% endif %}" href="/dashboard?evento={{ valore }}&stato={{ stato_corrente }}">{{ etichetta }}</a>
         </li>
         {% endfor %}
     </ul>
+
+    <form method="get" action="/dashboard" class="row g-2 align-items-end mb-3">
+        <input type="hidden" name="evento" value="{{ evento_corrente }}">
+        <div class="col-auto">
+            <label class="form-label" for="stato">Filtra per stato</label>
+            <select class="form-select" id="stato" name="stato" onchange="this.form.submit()">
+                <option value="attivi" {% if stato_corrente == "attivi" %}selected{% endif %}>Attive (esclude annullate)</option>
+                <option value="annullati" {% if stato_corrente == "annullati" %}selected{% endif %}>Solo annullate</option>
+                <option value="tutti" {% if stato_corrente == "tutti" %}selected{% endif %}>Tutte (incluse annullate)</option>
+            </select>
+        </div>
+    </form>
 
     <div class="row g-3 mb-3">
         <div class="col-sm-4">
@@ -94,7 +106,9 @@
                             {% else %}
                             <ul class="list-unstyled mb-0">
                                 {% for p in famiglia.partecipanti %}
-                                {% if evento_corrente == 'tutti' or p[CAMPO_EVENTO[evento_corrente]] %}
+                                {% set match_evento = evento_corrente == 'tutti' or p[CAMPO_EVENTO[evento_corrente]] %}
+                                {% set match_stato = (stato_corrente == 'tutti') or (stato_corrente == 'annullati' and p.stato_iscrizione == 'Annullata') or (stato_corrente == 'attivi' and p.stato_iscrizione != 'Annullata') %}
+                                {% if match_evento and match_stato %}
                                 <li class="mb-2 pb-2 border-bottom">
                                     <div>
                                         {{ p.nome }} {{ p.cognome }}
@@ -115,6 +129,7 @@
                                     <div class="small text-muted fst-italic">Note: {{ p.note }}</div>
                                     {% endif %}
                                     <div class="d-flex gap-2 mt-1">
+                                        {% if p.stato_iscrizione != "Annullata" %}
                                         <a href="/modifica-iscrizione/{{ p.id }}" class="btn btn-sm btn-outline-secondary">
                                             Modifica
                                         </a>
@@ -123,7 +138,6 @@
                                                 Ricalcola prezzo
                                             </button>
                                         </form>
-                                        {% if p.stato_iscrizione != "Annullata" %}
                                         <a href="/dashboard/annulla/{{ p.id }}" class="btn btn-sm btn-outline-danger">
                                             Annulla iscrizione
                                         </a>

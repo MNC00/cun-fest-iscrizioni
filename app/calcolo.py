@@ -213,6 +213,11 @@ def calcola_prezzo_partecipante(partecipante: Partecipante, db: Session) -> dict
 
     Ritorna un dizionario con tutti i valori calcolati.
     """
+    if partecipante.stato_iscrizione == "Annullata":
+        raise CalcoloPrezzoError(
+            "Impossibile calcolare il prezzo: l'iscrizione è stata annullata."
+        )
+
     if partecipante.flag_solo_pranzo_cun:
         return _calcola_prezzo_solo_pranzo_cun(partecipante, db)
 

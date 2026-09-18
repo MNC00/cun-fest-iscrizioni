@@ -361,6 +361,7 @@ def dashboard(
     request: Request,
     msg: str | None = None,
     evento: str = "tutti",
+    stato: str = "attivi",
     db: Session = Depends(get_db),
 ):
     username = get_current_operatore_username(request)
@@ -378,12 +379,21 @@ def dashboard(
     # singola", non va conteggiato come famiglia nelle statistiche (nucleo = famiglia
     # con più di un partecipante attivo). Il filtro per evento (PreCunFest/Campo
     # Famiglie/solo CunFest) è per partecipante: una famiglia resta visibile se ha
-    # almeno un partecipante del pacchetto selezionato.
+    # almeno un partecipante del pacchetto selezionato. Le statistiche contano
+    # sempre i soli partecipanti attivi, indipendentemente dal filtro "stato"
+    # (che riguarda solo cosa viene mostrato in elenco).
     def _match_evento(p: Partecipante) -> bool:
         if evento == "tutti":
             return True
         campo = CAMPO_EVENTO.get(evento)
         return bool(campo and getattr(p, campo, False))
+
+    def _match_stato(p: Partecipante) -> bool:
+        if stato == "annullati":
+            return p.stato_iscrizione == "Annullata"
+        if stato == "attivi":
+            return p.stato_iscrizione != "Annullata"
+        return True  # "tutti"
 
     attivi_per_famiglia = [
         [p for p in famiglia.partecipanti if p.stato_iscrizione != "Annullata" and _match_evento(p)]
@@ -395,8 +405,8 @@ def dashboard(
 
     famiglie_filtrate = [
         famiglia
-        for famiglia, attivi in zip(famiglie, attivi_per_famiglia)
-        if evento == "tutti" or any(_match_evento(p) for p in famiglia.partecipanti)
+        for famiglia in famiglie
+        if any(_match_evento(p) and _match_stato(p) for p in famiglia.partecipanti)
     ]
 
     return templates.TemplateResponse(
@@ -411,6 +421,7 @@ def dashboard(
             "nuclei_familiari": nuclei_familiari,
             "iscritti_singoli": iscritti_singoli,
             "evento_corrente": evento,
+            "stato_corrente": stato,
         },
     )
 
@@ -522,6 +533,11 @@ def modifica_iscrizione_form(
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
+    if partecipante.stato_iscrizione == "Annullata":
+        return RedirectResponse(
+            url="/dashboard?msg=Iscrizione annullata: non è più modificabile.", status_code=303
+        )
+
     return templates.TemplateResponse(
         request=request,
         name="modifica_iscrizione.html",
@@ -564,6 +580,11 @@ def modifica_iscrizione_submit(
     )
     if not partecipante:
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
+
+    if partecipante.stato_iscrizione == "Annullata":
+        return RedirectResponse(
+            url="/dashboard?msg=Iscrizione annullata: non è più modificabile.", status_code=303
+        )
 
     e_solo_pranzo_cun = flag_solo_pranzo_cun == "true"
     e_precun = flag_precun is not None
