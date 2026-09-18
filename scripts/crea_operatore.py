@@ -6,8 +6,16 @@ Uso interattivo:
 Uso non interattivo (utile in automazioni/CI):
     python scripts/crea_operatore.py --username mario --password "segreta123" --nome "Mario Rossi"
 
+Per rendere un operatore amministratore (accesso alla sezione /configurazione:
+date evento, tariffe, gestione altri operatori):
+    python scripts/crea_operatore.py --username mario --password "segreta123" --admin
+
 Se lo username esiste già, l'operatore viene aggiornato (password, nome,
-stato attivo) invece di crearne uno duplicato.
+stato attivo, ruolo amministratore) invece di crearne uno duplicato.
+ATTENZIONE: --disattiva e --admin vanno ripassati ad ogni esecuzione dello
+script sullo stesso operatore, altrimenti vengono azzerati (es. resettare la
+password di un amministratore senza ripassare --admin lo declassa a
+operatore normale).
 """
 
 import argparse
@@ -22,7 +30,9 @@ from app.database import SessionLocal  # noqa: E402
 from app.models import Operatore  # noqa: E402
 
 
-def crea_o_aggiorna_operatore(username: str, password: str, nome: str | None, attivo: bool) -> str:
+def crea_o_aggiorna_operatore(
+    username: str, password: str, nome: str | None, attivo: bool, is_admin: bool
+) -> str:
     db = SessionLocal()
     try:
         operatore = db.query(Operatore).filter(Operatore.username == username).first()
@@ -32,6 +42,7 @@ def crea_o_aggiorna_operatore(username: str, password: str, nome: str | None, at
             operatore.password_hash = password_hash
             operatore.nome = nome or operatore.nome
             operatore.attivo = attivo
+            operatore.is_admin = is_admin
             esito = "aggiornato"
         else:
             operatore = Operatore(
@@ -39,6 +50,7 @@ def crea_o_aggiorna_operatore(username: str, password: str, nome: str | None, at
                 password_hash=password_hash,
                 nome=nome,
                 attivo=attivo,
+                is_admin=is_admin,
             )
             db.add(operatore)
             esito = "creato"
@@ -59,6 +71,15 @@ def main():
         action="store_true",
         help="Crea/aggiorna l'operatore come NON attivo (non potrà effettuare il login)",
     )
+    parser.add_argument(
+        "--admin",
+        action="store_true",
+        help=(
+            "Rende l'operatore amministratore (accesso alla sezione /configurazione: "
+            "date evento, tariffe, gestione operatori). Come per --disattiva, va "
+            "ripassato ad ogni esecuzione: se omesso, il ruolo amministratore viene rimosso."
+        ),
+    )
     args = parser.parse_args()
 
     username = args.username or input("Username operatore: ").strip()
@@ -76,7 +97,9 @@ def main():
         # Modalità interattiva: chiedi anche il nome (facoltativo)
         nome = input("Nome e cognome (opzionale): ").strip() or None
 
-    esito = crea_o_aggiorna_operatore(username, password, nome, attivo=not args.disattiva)
+    esito = crea_o_aggiorna_operatore(
+        username, password, nome, attivo=not args.disattiva, is_admin=args.admin
+    )
     print(f"Operatore '{username}' {esito} con successo.")
 
 

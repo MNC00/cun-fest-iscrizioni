@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session, joinedload
 from app.auth import (
     SESSION_COOKIE_NAME,
     create_session_token,
+    get_current_operatore_is_admin,
     get_current_operatore_username,
+    hash_password,
     verify_password,
 )
 from app.calcolo import (
@@ -65,6 +67,9 @@ CAMPO_EVENTO = {
     "pranzo_cun": "flag_solo_pranzo_cun",
 }
 templates.env.globals["CAMPO_EVENTO"] = CAMPO_EVENTO
+# Usata da _nav.html per mostrare/nascondere il link "Configurazione" senza
+# dover passare is_admin nel context di ogni singola route.
+templates.env.globals["is_admin_operatore"] = get_current_operatore_is_admin
 
 # Sul form pubblico il partecipante sceglie solo la zona di provenienza geografica
 # (Nord/Centro/Sud): la fascia di prezzo effettiva (usata per il calcolo) ne è
@@ -100,6 +105,20 @@ def _periodi_evento_dict(db: Session) -> dict:
         }
         for riga in righe
     }
+
+
+def _richiedi_operatore_admin(request: Request) -> tuple[str | None, RedirectResponse | None]:
+    """Verifica che l'operatore sia loggato e amministratore.
+
+    Ritorna (username, None) se autorizzato, oppure (None, redirect_a_login)
+    se non loggato. Solleva HTTPException 403 se loggato ma non amministratore.
+    """
+    username = get_current_operatore_username(request)
+    if not username:
+        return None, RedirectResponse(url="/login", status_code=303)
+    if not get_current_operatore_is_admin(request):
+        raise HTTPException(status_code=403, detail="Sezione riservata agli amministratori.")
+    return username, None
 
 
 def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
@@ -289,7 +308,7 @@ def login_submit(
             status_code=401,
         )
 
-    token = create_session_token(operatore.username)
+    token = create_session_token(operatore.username, is_admin=bool(operatore.is_admin))
     response = RedirectResponse(url="/dashboard", status_code=303)
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
@@ -1205,3 +1224,370 @@ def report_pasti_csv(request: Request, evento: str = "tutti", db: Session = Depe
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=report_pasti.csv"},
     )
+
+
+def _parse_float_opt(valore: str | None) -> float | None:
+    """Converte una stringa di form in float, o None se vuota/assente."""
+    if valore is None or valore.strip() == "":
+        return None
+    return float(valore.replace(",", "."))
+
+
+FASCE_TARIFFA = ["Nord", "Altro"]
+
+
+@app.get("/configurazione")
+def configurazione_pagina(
+    request: Request, sezione: str = "periodi", db: Session = Depends(get_db)
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    periodi = {r.tipo_evento: r for r in db.query(PeriodoEvento).all()}
+    tariffe = db.query(Tariffa).order_by(Tariffa.tipo_evento, Tariffa.fascia).all()
+    operatori = db.query(Operatore).order_by(Operatore.username).all()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="configurazione.html",
+        context={
+            "title": "Configurazione",
+            "username": username,
+            "sezione": sezione,
+            "periodi": periodi,
+            "tariffe": tariffe,
+            "operatori": operatori,
+            "fasce_tariffa": FASCE_TARIFFA,
+        },
+    )
+
+
+@app.post("/configurazione/periodi/{tipo_evento}")
+def configurazione_aggiorna_periodo(
+    tipo_evento: str,
+    request: Request,
+    data_inizio: date | None = Form(None),
+    data_fine: date | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    periodo = db.query(PeriodoEvento).filter(PeriodoEvento.tipo_evento == tipo_evento).first()
+    if not periodo:
+        raise HTTPException(status_code=404, detail="Periodo evento non trovato.")
+
+    valori_precedenti = {
+        "data_inizio": periodo.data_inizio.isoformat() if periodo.data_inizio else None,
+        "data_fine": periodo.data_fine.isoformat() if periodo.data_fine else None,
+    }
+    periodo.data_inizio = data_inizio
+    periodo.data_fine = data_fine
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="periodo_evento",
+            oggetto_id=periodo.id,
+            azione="periodo_modificato",
+            operatore=username,
+            dettagli={
+                "tipo_evento": tipo_evento,
+                "prima": valori_precedenti,
+                "dopo": {
+                    "data_inizio": data_inizio.isoformat() if data_inizio else None,
+                    "data_fine": data_fine.isoformat() if data_fine else None,
+                },
+            },
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=periodi&ok=1", status_code=303)
+
+
+@app.post("/configurazione/tariffe/nuova")
+def configurazione_crea_tariffa(
+    request: Request,
+    tipo_evento: str = Form(...),
+    fascia: str = Form(""),
+    prezzo_notte: str = Form(""),
+    prezzo_colazione: str = Form(""),
+    prezzo_pranzo: str = Form(""),
+    prezzo_cena: str = Form(""),
+    tetto_spesa_fascia: str = Form(""),
+    sconto_giovani_percentuale: str = Form(""),
+    attivo: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    tariffa = Tariffa(
+        tipo_evento=tipo_evento,
+        fascia=fascia or None,
+        prezzo_notte=_parse_float_opt(prezzo_notte),
+        prezzo_colazione=_parse_float_opt(prezzo_colazione),
+        prezzo_pranzo=_parse_float_opt(prezzo_pranzo),
+        prezzo_cena=_parse_float_opt(prezzo_cena),
+        tetto_spesa_fascia=_parse_float_opt(tetto_spesa_fascia),
+        sconto_giovani_percentuale=_parse_float_opt(sconto_giovani_percentuale),
+        attivo=attivo is not None,
+    )
+    db.add(tariffa)
+    db.flush()
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="tariffa",
+            oggetto_id=tariffa.id,
+            azione="tariffa_creata",
+            operatore=username,
+            dettagli={
+                "tipo_evento": tariffa.tipo_evento,
+                "fascia": tariffa.fascia,
+                "prezzo_notte": tariffa.prezzo_notte,
+                "prezzo_colazione": tariffa.prezzo_colazione,
+                "prezzo_pranzo": tariffa.prezzo_pranzo,
+                "prezzo_cena": tariffa.prezzo_cena,
+                "tetto_spesa_fascia": tariffa.tetto_spesa_fascia,
+                "sconto_giovani_percentuale": tariffa.sconto_giovani_percentuale,
+                "attivo": tariffa.attivo,
+            },
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=tariffe&ok=1", status_code=303)
+
+
+@app.post("/configurazione/tariffe/{tariffa_id}")
+def configurazione_aggiorna_tariffa(
+    tariffa_id: int,
+    request: Request,
+    prezzo_notte: str = Form(""),
+    prezzo_colazione: str = Form(""),
+    prezzo_pranzo: str = Form(""),
+    prezzo_cena: str = Form(""),
+    tetto_spesa_fascia: str = Form(""),
+    sconto_giovani_percentuale: str = Form(""),
+    attivo: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    tariffa = db.query(Tariffa).filter(Tariffa.id == tariffa_id).first()
+    if not tariffa:
+        raise HTTPException(status_code=404, detail="Tariffa non trovata.")
+
+    def _snapshot(t: Tariffa) -> dict:
+        return {
+            "prezzo_notte": float(t.prezzo_notte) if t.prezzo_notte is not None else None,
+            "prezzo_colazione": float(t.prezzo_colazione) if t.prezzo_colazione is not None else None,
+            "prezzo_pranzo": float(t.prezzo_pranzo) if t.prezzo_pranzo is not None else None,
+            "prezzo_cena": float(t.prezzo_cena) if t.prezzo_cena is not None else None,
+            "tetto_spesa_fascia": float(t.tetto_spesa_fascia) if t.tetto_spesa_fascia is not None else None,
+            "sconto_giovani_percentuale": float(t.sconto_giovani_percentuale) if t.sconto_giovani_percentuale is not None else None,
+            "attivo": t.attivo,
+        }
+
+    valori_precedenti = _snapshot(tariffa)
+
+    tariffa.prezzo_notte = _parse_float_opt(prezzo_notte)
+    tariffa.prezzo_colazione = _parse_float_opt(prezzo_colazione)
+    tariffa.prezzo_pranzo = _parse_float_opt(prezzo_pranzo)
+    tariffa.prezzo_cena = _parse_float_opt(prezzo_cena)
+    tariffa.tetto_spesa_fascia = _parse_float_opt(tetto_spesa_fascia)
+    tariffa.sconto_giovani_percentuale = _parse_float_opt(sconto_giovani_percentuale)
+    tariffa.attivo = attivo is not None
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="tariffa",
+            oggetto_id=tariffa.id,
+            azione="tariffa_modificata",
+            operatore=username,
+            dettagli={"prima": valori_precedenti, "dopo": _snapshot(tariffa)},
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=tariffe&ok=1", status_code=303)
+
+
+@app.post("/configurazione/tariffe/{tariffa_id}/elimina")
+def configurazione_elimina_tariffa(tariffa_id: int, request: Request, db: Session = Depends(get_db)):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    tariffa = db.query(Tariffa).filter(Tariffa.id == tariffa_id).first()
+    if not tariffa:
+        raise HTTPException(status_code=404, detail="Tariffa non trovata.")
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="tariffa",
+            oggetto_id=tariffa.id,
+            azione="tariffa_eliminata",
+            operatore=username,
+            dettagli={"tipo_evento": tariffa.tipo_evento, "fascia": tariffa.fascia},
+        )
+    )
+    db.delete(tariffa)
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=tariffe&ok=1", status_code=303)
+
+
+@app.post("/configurazione/operatori/nuovo")
+def configurazione_crea_operatore(
+    request: Request,
+    nuovo_username: str = Form(...),
+    nuovo_password: str = Form(...),
+    nuovo_nome: str = Form(""),
+    nuovo_is_admin: str | None = Form(None),
+    db: Session = Depends(get_db),
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    nuovo_username = nuovo_username.strip()
+    if not nuovo_username or not nuovo_password:
+        return RedirectResponse(
+            url="/configurazione?sezione=operatori&errore=Username e password sono obbligatori.",
+            status_code=303,
+        )
+
+    esistente = db.query(Operatore).filter(Operatore.username == nuovo_username).first()
+    if esistente:
+        return RedirectResponse(
+            url=f"/configurazione?sezione=operatori&errore=Esiste già un operatore con username '{nuovo_username}'.",
+            status_code=303,
+        )
+
+    operatore = Operatore(
+        username=nuovo_username,
+        password_hash=hash_password(nuovo_password),
+        nome=nuovo_nome or None,
+        attivo=True,
+        is_admin=nuovo_is_admin is not None,
+    )
+    db.add(operatore)
+    db.flush()
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="operatore",
+            oggetto_id=operatore.id,
+            azione="operatore_creato",
+            operatore=username,
+            dettagli={"username": operatore.username, "is_admin": operatore.is_admin},
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=operatori&ok=1", status_code=303)
+
+
+@app.post("/configurazione/operatori/{operatore_id}/toggle-admin")
+def configurazione_toggle_admin_operatore(operatore_id: int, request: Request, db: Session = Depends(get_db)):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    operatore = db.query(Operatore).filter(Operatore.id == operatore_id).first()
+    if not operatore:
+        raise HTTPException(status_code=404, detail="Operatore non trovato.")
+
+    if operatore.username == username and operatore.is_admin:
+        return RedirectResponse(
+            url="/configurazione?sezione=operatori&errore=Non puoi togliere a te stesso il ruolo di amministratore.",
+            status_code=303,
+        )
+
+    operatore.is_admin = not operatore.is_admin
+    db.add(
+        LogEvento(
+            oggetto_tipo="operatore",
+            oggetto_id=operatore.id,
+            azione="operatore_ruolo_modificato",
+            operatore=username,
+            dettagli={"username": operatore.username, "is_admin": operatore.is_admin},
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=operatori&ok=1", status_code=303)
+
+
+@app.post("/configurazione/operatori/{operatore_id}/toggle-attivo")
+def configurazione_toggle_attivo_operatore(operatore_id: int, request: Request, db: Session = Depends(get_db)):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    operatore = db.query(Operatore).filter(Operatore.id == operatore_id).first()
+    if not operatore:
+        raise HTTPException(status_code=404, detail="Operatore non trovato.")
+
+    if operatore.username == username and operatore.attivo:
+        return RedirectResponse(
+            url="/configurazione?sezione=operatori&errore=Non puoi disattivare te stesso.",
+            status_code=303,
+        )
+
+    operatore.attivo = not operatore.attivo
+    db.add(
+        LogEvento(
+            oggetto_tipo="operatore",
+            oggetto_id=operatore.id,
+            azione="operatore_stato_modificato",
+            operatore=username,
+            dettagli={"username": operatore.username, "attivo": operatore.attivo},
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=operatori&ok=1", status_code=303)
+
+
+@app.post("/configurazione/operatori/{operatore_id}/reset-password")
+def configurazione_reset_password_operatore(
+    operatore_id: int,
+    request: Request,
+    nuova_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    operatore = db.query(Operatore).filter(Operatore.id == operatore_id).first()
+    if not operatore:
+        raise HTTPException(status_code=404, detail="Operatore non trovato.")
+
+    if not nuova_password:
+        return RedirectResponse(
+            url="/configurazione?sezione=operatori&errore=La nuova password non può essere vuota.",
+            status_code=303,
+        )
+
+    operatore.password_hash = hash_password(nuova_password)
+    db.add(
+        LogEvento(
+            oggetto_tipo="operatore",
+            oggetto_id=operatore.id,
+            azione="operatore_password_reimpostata",
+            operatore=username,
+            dettagli={"username": operatore.username},
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/configurazione?sezione=operatori&ok=1", status_code=303)

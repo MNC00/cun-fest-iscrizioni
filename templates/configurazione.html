@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
+</head>
+<body class="bg-light">
+<div class="container py-4">
+    {% include "_nav.html" %}
+
+    {% if request.query_params.get('ok') == '1' %}
+    <div class="alert alert-success">Modifica salvata con successo.</div>
+    {% endif %}
+    {% if request.query_params.get('errore') %}
+    <div class="alert alert-danger">{{ request.query_params.get('errore') }}</div>
+    {% endif %}
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link {% if sezione == 'periodi' %}active{% endif %}" href="/configurazione?sezione=periodi">Date evento</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if sezione == 'tariffe' %}active{% endif %}" href="/configurazione?sezione=tariffe">Tariffe</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if sezione == 'operatori' %}active{% endif %}" href="/configurazione?sezione=operatori">Operatori</a>
+        </li>
+    </ul>
+
+    {% if sezione == 'periodi' %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Date di ciascun evento</h2>
+            <p class="text-muted">
+                Finché una riga ha le date vuote, l'app non applica alcun vincolo di data per quell'evento
+                (eccetto "Solo pranzo CUN", che richiede almeno la data di inizio per calcolare il prezzo).
+            </p>
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Evento</th>
+                        <th>Data inizio</th>
+                        <th>Data fine</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tipo_evento, etichetta in TIPI_EVENTO_LABELS.items() %}
+                    {% set periodo = periodi.get(tipo_evento) %}
+                    <form method="post" action="/configurazione/periodi/{{ tipo_evento }}">
+                        <tr>
+                            <td>{{ etichetta }}</td>
+                            <td>
+                                <input type="date" class="form-control" name="data_inizio"
+                                       value="{{ periodo.data_inizio.isoformat() if periodo and periodo.data_inizio else '' }}">
+                            </td>
+                            <td>
+                                <input type="date" class="form-control" name="data_fine"
+                                       value="{{ periodo.data_fine.isoformat() if periodo and periodo.data_fine else '' }}">
+                            </td>
+                            <td>
+                                <button type="submit" class="btn btn-primary btn-sm">Salva</button>
+                            </td>
+                        </tr>
+                    </form>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if sezione == 'tariffe' %}
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Tariffe esistenti</h2>
+            <p class="text-muted">
+                Una riga con fascia "Base (tutte le fasce)" è la tariffa di default dell'evento; una riga con
+                fascia specifica (Nord/Altro) fa da override solo per i partecipanti di quella fascia.
+            </p>
+            <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Evento</th>
+                        <th>Fascia</th>
+                        <th>Notte</th>
+                        <th>Colazione</th>
+                        <th>Pranzo</th>
+                        <th>Cena</th>
+                        <th>Tetto spesa</th>
+                        <th>Sconto giovani %</th>
+                        <th>Attiva</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tariffa in tariffe %}
+                    <form method="post" action="/configurazione/tariffe/{{ tariffa.id }}">
+                        <tr>
+                            <td>{{ TIPI_EVENTO_LABELS.get(tariffa.tipo_evento, tariffa.tipo_evento) }}</td>
+                            <td>{{ tariffa.fascia or "Base (tutte le fasce)" }}</td>
+                            <td><input type="text" class="form-control form-control-sm" name="prezzo_notte" value="{{ tariffa.prezzo_notte if tariffa.prezzo_notte is not none else '' }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="prezzo_colazione" value="{{ tariffa.prezzo_colazione if tariffa.prezzo_colazione is not none else '' }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="prezzo_pranzo" value="{{ tariffa.prezzo_pranzo if tariffa.prezzo_pranzo is not none else '' }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="prezzo_cena" value="{{ tariffa.prezzo_cena if tariffa.prezzo_cena is not none else '' }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="tetto_spesa_fascia" value="{{ tariffa.tetto_spesa_fascia if tariffa.tetto_spesa_fascia is not none else '' }}"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="sconto_giovani_percentuale" value="{{ tariffa.sconto_giovani_percentuale if tariffa.sconto_giovani_percentuale is not none else '' }}"></td>
+                            <td class="text-center">
+                                <input type="checkbox" class="form-check-input" name="attivo" {% if tariffa.attivo %}checked{% endif %}>
+                            </td>
+                            <td class="d-flex gap-1">
+                                <button type="submit" class="btn btn-primary btn-sm">Salva</button>
+                                <button type="submit" formaction="/configurazione/tariffe/{{ tariffa.id }}/elimina"
+                                        class="btn btn-outline-danger btn-sm"
+                                        onclick="return confirm('Eliminare questa tariffa?');">Elimina</button>
+                            </td>
+                        </tr>
+                    </form>
+                    {% else %}
+                    <tr><td colspan="10" class="text-muted">Nessuna tariffa configurata.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Aggiungi nuova tariffa</h2>
+            <form method="post" action="/configurazione/tariffe/nuova" class="row g-2 align-items-end">
+                <div class="col-md-2">
+                    <label class="form-label">Evento</label>
+                    <select class="form-select" name="tipo_evento" required>
+                        {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
+                        <option value="{{ valore }}">{{ etichetta }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Fascia</label>
+                    <select class="form-select" name="fascia">
+                        <option value="">Base (tutte le fasce)</option>
+                        {% for fascia in fasce_tariffa %}
+                        <option value="{{ fascia }}">{{ fascia }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Notte</label>
+                    <input type="text" class="form-control" name="prezzo_notte">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Colaz.</label>
+                    <input type="text" class="form-control" name="prezzo_colazione">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Pranzo</label>
+                    <input type="text" class="form-control" name="prezzo_pranzo">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Cena</label>
+                    <input type="text" class="form-control" name="prezzo_cena">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Tetto</label>
+                    <input type="text" class="form-control" name="tetto_spesa_fascia">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label">Sconto %</label>
+                    <input type="text" class="form-control" name="sconto_giovani_percentuale">
+                </div>
+                <div class="col-md-1 form-check">
+                    <input type="checkbox" class="form-check-input" name="attivo" id="nuova-tariffa-attiva" checked>
+                    <label class="form-check-label" for="nuova-tariffa-attiva">Attiva</label>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-success">Crea</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if sezione == 'operatori' %}
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Operatori</h2>
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Nome</th>
+                        <th>Amministratore</th>
+                        <th>Attivo</th>
+                        <th>Reimposta password</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for operatore in operatori %}
+                    <tr>
+                        <td>{{ operatore.username }}{% if operatore.username == username %} <span class="badge bg-secondary">tu</span>{% endif %}</td>
+                        <td>{{ operatore.nome or "-" }}</td>
+                        <td>
+                            <form method="post" action="/configurazione/operatori/{{ operatore.id }}/toggle-admin" class="d-inline">
+                                <button type="submit" class="btn btn-sm {% if operatore.is_admin %}btn-success{% else %}btn-outline-secondary{% endif %}">
+                                    {{ "Sì" if operatore.is_admin else "No" }}
+                                </button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" action="/configurazione/operatori/{{ operatore.id }}/toggle-attivo" class="d-inline">
+                                <button type="submit" class="btn btn-sm {% if operatore.attivo %}btn-success{% else %}btn-outline-secondary{% endif %}">
+                                    {{ "Sì" if operatore.attivo else "No" }}
+                                </button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="post" action="/configurazione/operatori/{{ operatore.id }}/reset-password" class="d-flex gap-1">
+                                <input type="password" class="form-control form-control-sm" name="nuova_password" placeholder="Nuova password" required>
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Reimposta</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Nuovo operatore</h2>
+            <form method="post" action="/configurazione/operatori/nuovo" class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" class="form-control" name="nuovo_username" required>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Nome e cognome</label>
+                    <input type="text" class="form-control" name="nuovo_nome">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" class="form-control" name="nuovo_password" required>
+                </div>
+                <div class="col-md-2 form-check">
+                    <input type="checkbox" class="form-check-input" name="nuovo_is_admin" id="nuovo-operatore-admin">
+                    <label class="form-check-label" for="nuovo-operatore-admin">Amministratore</label>
+                </div>
+                <div class="col-md-1">
+                    <button type="submit" class="btn btn-success">Crea</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

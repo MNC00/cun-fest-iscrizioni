@@ -120,6 +120,7 @@ class Operatore(Base):
     password_hash = Column(String, nullable=False)
     nome = Column(String)
     attivo = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)  # accesso alla sezione /configurazione
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 

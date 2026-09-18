@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS operatori (
     password_hash TEXT NOT NULL,
     nome TEXT,
     attivo BOOLEAN DEFAULT TRUE,
+    is_admin BOOLEAN DEFAULT FALSE, -- accesso alla sezione /configurazione (date, tariffe, operatori)
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
