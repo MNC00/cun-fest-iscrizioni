@@ -12,6 +12,7 @@ app/
   calcolo.py        calcolo prezzo/pasti per partecipante
   pagamenti.py       sincronizzazione pagamento <-> prezzo
   email_service.py  invio email via Gmail API (OAuth2) + builder HTML
+  storage_service.py upload/download ricevute di pagamento via Supabase Storage
 templates/          viste Jinja2 (Bootstrap)
 static/             CSS/JS
 sql/                script SQL da applicare manualmente su Supabase
@@ -26,6 +27,7 @@ Non è usato un ORM migration tool: le modifiche di schema sono script SQL in `s
 - **Tariffa**: listino prezzi per fascia, con validità temporale.
 - **Pagamento**: 1:1 con `Partecipante`, importo dovuto/pagato, stato pagamento.
 - **Operatore**: utenti che accedono alla dashboard.
+- **RicevutaPagamento** / **RicevutaPartecipante**: ricevute di bonifico caricate dalle famiglie (file su Supabase Storage, metadati su Postgres); relazione N:N con `Partecipante` perché una ricevuta può coprire uno, alcuni o tutti i partecipanti dello stesso nucleo. Verifica manuale dell'operatore (`verificata`/`verificata_da`/`verificata_il`), mai automatica.
 - **LogEvento**: audit log generico (`oggetto_tipo`, `oggetto_id`, `azione`, `operatore`, `dettagli` JSON) scritto ad ogni azione rilevante.
 
 ## Flussi principali
@@ -44,6 +46,9 @@ Funzioni `costruisci_email_*` generano `{oggetto, html, testo}` per ogni caso (c
 
 **Annullamento self-service** (`GET/POST /annulla/{token}`)
 Ogni partecipante riceve un `token_annullamento` univoco alla creazione, usato in un link incluso nelle email di conferma/aggiornamento (nessun login richiesto). Da quella pagina può annullare solo la propria iscrizione (indicando un nuovo referente per il nucleo, se restano altri iscritti) oppure annullare in un'unica soluzione tutto il nucleo familiare (un'unica email di recap con l'elenco di chi è stato annullato).
+
+**Ricevute di pagamento** (`GET/POST /ricevute/{token}`, `app/storage_service.py`)
+Ogni `Famiglia` ha un `token_ricevute` univoco (generato pigramente al primo utilizzo, es. costruzione di un'email), usato in un link pubblico incluso nelle email di conferma/aggiornamento prezzo (nessun login richiesto). Da quella pagina la famiglia carica uno o più file (PDF/JPG/PNG, max 8MB) selezionando quali partecipanti del nucleo copre ciascuna ricevuta — così un unico bonifico per tutta la famiglia o bonifici separati per persone diverse sono entrambi rappresentabili. I file vengono caricati su Supabase Storage (bucket privato, mai esposto direttamente al browser) tramite `app/storage_service.py`; solo i metadati (nome file, percorso, chi copre) restano su Postgres. Gli operatori vedono/scaricano/verificano le ricevute da `/pagamenti`: il download passa sempre dal backend (mai un URL diretto al bucket), e la verifica che l'importo del bonifico sia corretto resta una scelta manuale dell'operatore (flag `verificata`), mai automatica.
 
 **Autenticazione operatori** (`app/auth.py`)
 Password hashate con bcrypt. Sessione: token firmato (`itsdangerous`, scadenza 8h) salvato in cookie httponly. `get_current_operatore_username(request)` legge il cookie in ogni rotta protetta; se assente/non valido → redirect a `/login`.

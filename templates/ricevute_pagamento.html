@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}">
+</head>
+<body class="bg-light">
+<div class="container py-4" style="max-width: 720px;">
+    <h1 class="h4 mb-4 mt-2">CUN Fest &mdash; Carica ricevuta di pagamento</h1>
+
+    {% if request.query_params.get('ok') == '1' %}
+    <div class="alert alert-success">Ricevuta caricata con successo. Grazie!</div>
+    {% endif %}
+    {% if request.query_params.get('errore') %}
+    <div class="alert alert-danger">{{ request.query_params.get('errore') }}</div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <p>Ciao {{ famiglia.referente_nome }}, da qui puoi caricare le ricevute dei bonifici effettuati per il
+            tuo nucleo familiare.</p>
+            <ul class="small text-muted">
+                <li>Se hai fatto <strong>un unico bonifico per tutto il nucleo</strong>, carica la ricevuta e
+                seleziona tutti i partecipanti che copre.</li>
+                <li>Se hai fatto <strong>bonifici separati per persone diverse</strong> (o in momenti diversi),
+                carica una ricevuta per volta selezionando solo i partecipanti coperti da quel bonifico.</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Carica una nuova ricevuta</h2>
+            <form method="post" action="/ricevute/{{ token }}" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label class="form-label">File (PDF, JPG o PNG — puoi selezionarne più di uno se è la stessa ricevuta)</label>
+                    <input type="file" class="form-control" name="file" accept=".pdf,.jpg,.jpeg,.png" multiple required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label d-block">Questa ricevuta copre:</label>
+                    {% for partecipante in partecipanti %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="partecipante_ids"
+                               value="{{ partecipante.id }}" id="partecipante-{{ partecipante.id }}" checked>
+                        <label class="form-check-label" for="partecipante-{{ partecipante.id }}">
+                            {{ partecipante.nome }} {{ partecipante.cognome }}
+                        </label>
+                    </div>
+                    {% else %}
+                    <p class="text-muted small">Nessun partecipante attivo trovato per questo nucleo.</p>
+                    {% endfor %}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Note (facoltativo, es. riferimento del bonifico)</label>
+                    <textarea class="form-control" name="note" rows="2"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Carica ricevuta</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Ricevute già caricate</h2>
+            {% if not ricevute %}
+            <p class="text-muted mb-0">Non hai ancora caricato nessuna ricevuta.</p>
+            {% else %}
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Caricata il</th>
+                        <th>Partecipanti coperti</th>
+                        <th>Stato</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ricevuta in ricevute %}
+                    <tr>
+                        <td>{{ ricevuta.nome_file_originale }}</td>
+                        <td>{{ ricevuta.created_at.strftime('%d/%m/%Y %H:%M') if ricevuta.created_at else '-' }}</td>
+                        <td>
+                            {{ ricevuta.partecipanti_coperti | map(attribute='partecipante') | map(attribute='nome') | join(', ') }}
+                        </td>
+                        <td>
+                            {% if ricevuta.verificata %}
+                            <span class="badge bg-success">Verificata</span>
+                            {% else %}
+                            <span class="badge bg-secondary">In attesa di verifica</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+</body>
+</html>

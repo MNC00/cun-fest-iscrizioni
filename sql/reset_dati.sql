@@ -8,6 +8,11 @@
 
 -- 1) Iscrizioni, partecipanti, pagamenti e log dell'edizione corrente.
 --    RESTART IDENTITY azzera anche i contatori id (si riparte da 1).
+--    CASCADE elimina automaticamente anche le ricevute di pagamento collegate
+--    (tabelle ricevute_pagamento/ricevuta_partecipanti, via famiglie) — ma
+--    NON i file già caricati su Supabase Storage: svuota manualmente il
+--    bucket (Supabase → Storage → bucket ricevute-pagamento → seleziona
+--    tutto → elimina) se vuoi liberare spazio per la nuova edizione.
 TRUNCATE TABLE partecipanti, pagamenti, famiglie, log_eventi
     RESTART IDENTITY CASCADE;
 

@@ -82,13 +82,21 @@ def _html_a_testo(html: str) -> str:
     return testo.strip()
 
 
-def _paragrafo_pagamento() -> str:
+def _paragrafo_pagamento(link_ricevute: str | None = None) -> str:
+    istruzione_ricevuta = (
+        f"<p>Puoi caricare la ricevuta del bonifico direttamente da qui: "
+        f"<a href='{link_ricevute}'>Carica ricevuta di pagamento</a> (in alternativa, va bene anche "
+        "rispondere a questa mail allegandola).</p>"
+        if link_ricevute
+        else "<p>Nel caso facessi il bonifico, rispondi a questa mail allegando la ricevuta.</p>"
+    )
     return (
         f"<p>È consigliato effettuare il pagamento tramite bonifico su C/C <b>{INTESTATARIO_CUNFEST}</b>.</p>"
         f"<p><b>IBAN:</b> {IBAN_CUNFEST}<br>"
         "<b>Causale:</b> “Pre CUN e CUN Fest - nome del partecipante e codice fiscale”.</p>"
-        "<p>Nel caso facessi il bonifico, rispondi a questa mail allegando la ricevuta.</p>"
+        + istruzione_ricevuta
     )
+
 
 
 def _paragrafo_pagamento_solo_pranzo_conferma_con_prezzo() -> str:
@@ -169,7 +177,7 @@ def costruisci_email_conferma(contesto: dict) -> dict:
 
     contesto: nome, anno, hasPrezzo, isSoloPranzo, dataArrivoFormattata,
     pastoArrivo, dataPartenzaFormattata, pastoPartenza, prezzo (opz.),
-    linkAnnullamento (opz.).
+    linkAnnullamento (opz.), linkRicevute (opz.).
     """
     oggetto = "Conferma Iscrizione CUN Fest"
     nome = contesto["nome"]
@@ -206,7 +214,7 @@ def costruisci_email_conferma(contesto: dict) -> dict:
                 "giorni/pasti successivi, bisognerà prendere accordi con la casa. Qualora dovessi saltare dei pasti o "
                 "per qualsiasi altro aspetto connesso alla questione prezzo, ti saremmo grati se potessi farcelo sapere "
                 "rispondendo a questa email.</p>"
-                + _paragrafo_pagamento()
+                + _paragrafo_pagamento(contesto.get("linkRicevute"))
                 + _paragrafo_chiusura()
             )
         else:
@@ -241,7 +249,7 @@ def costruisci_email_aggiornamento(contesto: dict) -> dict:
                 if contesto.get("hasPrezzo")
                 else "<p>Al momento non è stato ancora comunicato il prezzo del pranzo. Ti avviseremo non appena disponibile.</p>"
             )
-            + _paragrafo_pagamento()
+            + _paragrafo_pagamento(contesto.get("linkRicevute"))
             + _paragrafo_chiusura_aggiornamento()
         )
     else:
@@ -258,7 +266,7 @@ def costruisci_email_aggiornamento(contesto: dict) -> dict:
                 if contesto.get("hasPrezzo")
                 else "<p>Il prezzo aggiornato non è ancora disponibile per la tua permanenza. Ti avviseremo appena possibile.</p>"
             )
-            + _paragrafo_pagamento()
+            + _paragrafo_pagamento(contesto.get("linkRicevute"))
             + _paragrafo_chiusura_aggiornamento()
         )
 

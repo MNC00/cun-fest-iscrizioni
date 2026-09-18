@@ -1,11 +1,11 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import logging
 import os
 import uuid
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -37,9 +37,20 @@ from app.email_service import (
     invia_comunicazione_massa,
     invia_conferma_iscrizione,
 )
-from app.models import Famiglia, LogEvento, Operatore, Pagamento, Partecipante, PeriodoEvento, Tariffa
+from app.models import (
+    Famiglia,
+    LogEvento,
+    Operatore,
+    Pagamento,
+    Partecipante,
+    PeriodoEvento,
+    RicevutaPagamento,
+    RicevutaPartecipante,
+    Tariffa,
+)
 from app.pagamenti import sincronizza_pagamento
 from app.schemas import IscrizioneFamigliaRequest
+from app.storage_service import StorageServiceError, carica_file, elimina_file, scarica_file
 
 load_dotenv()
 
@@ -121,12 +132,29 @@ def _richiedi_operatore_admin(request: Request) -> tuple[str | None, RedirectRes
     return username, None
 
 
-def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
+def _ottieni_o_crea_token_ricevute(famiglia: Famiglia, db: Session) -> str:
+    """Ritorna il token di accesso alla pagina pubblica di upload ricevute della
+    famiglia, generandolo (e salvandolo) al primo utilizzo se non esiste ancora
+    (es. famiglie create prima dell'introduzione di questa funzionalità)."""
+    if not famiglia.token_ricevute:
+        famiglia.token_ricevute = uuid.uuid4().hex
+        db.add(famiglia)
+        db.commit()
+        db.refresh(famiglia)
+    return famiglia.token_ricevute
+
+
+def _contesto_email_partecipante(partecipante: Partecipante, db: Session) -> dict:
     """Costruisce il contesto per le email di conferma/aggiornamento prezzo di un partecipante."""
     base_url = os.getenv("BASE_URL", "").rstrip("/")
     link_annullamento = (
         f"{base_url}/annulla/{partecipante.token_annullamento}"
         if base_url and partecipante.token_annullamento
+        else None
+    )
+    link_ricevute = (
+        f"{base_url}/ricevute/{_ottieni_o_crea_token_ricevute(partecipante.famiglia, db)}"
+        if base_url
         else None
     )
     return {
@@ -140,6 +168,7 @@ def _contesto_email_partecipante(partecipante: Partecipante) -> dict:
         "pastoPartenza": formatta_pasto(partecipante.pasto_partenza),
         "prezzo": float(partecipante.prezzo_netto) if partecipante.prezzo_netto is not None else None,
         "linkAnnullamento": link_annullamento,
+        "linkRicevute": link_ricevute,
     }
 
 
@@ -261,7 +290,7 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
             try:
                 invia_conferma_iscrizione(
                     email=famiglia.email,
-                    contesto=_contesto_email_partecipante(partecipante),
+                    contesto=_contesto_email_partecipante(partecipante, db),
                 )
             except EmailServiceError as exc:
                 logger.error(
@@ -386,7 +415,7 @@ def dashboard(
     )
 
 
-def _invia_email_aggiornamento_prezzo(partecipante: Partecipante, dettagli_calcolo: dict) -> None:
+def _invia_email_aggiornamento_prezzo(partecipante: Partecipante, dettagli_calcolo: dict, db: Session) -> None:
     """Invia al referente l'email con il prezzo appena (ri)calcolato per il partecipante.
 
     Chiamata solo a seguito di un'azione esplicita dell'operatore (ricalcolo o
@@ -396,7 +425,7 @@ def _invia_email_aggiornamento_prezzo(partecipante: Partecipante, dettagli_calco
     try:
         invia_aggiornamento_prezzo(
             email=partecipante.famiglia.email,
-            contesto=_contesto_email_partecipante(partecipante),
+            contesto=_contesto_email_partecipante(partecipante, db),
         )
     except EmailServiceError as exc:
         logger.error(
@@ -426,7 +455,7 @@ def ricalcola_prezzo(partecipante_id: int, request: Request, db: Session = Depen
         sincronizza_pagamento(partecipante, db)
         db.commit()
         msg = f"Prezzo ricalcolato per {partecipante.nome} {partecipante.cognome}."
-        _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo)
+        _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo, db)
     except CalcoloPrezzoError as exc:
         db.rollback()
         msg = f"Errore nel calcolo: {exc}"
@@ -464,7 +493,7 @@ def ricalcola_prezzi_mancanti(request: Request, db: Session = Depends(get_db)):
             sincronizza_pagamento(partecipante, db)
             db.commit()
             calcolati += 1
-            _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo)
+            _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo, db)
         except CalcoloPrezzoError:
             db.rollback()
             falliti += 1
@@ -669,7 +698,7 @@ def modifica_iscrizione_submit(
     db.add(log)
     db.commit()
 
-    _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo)
+    _invia_email_aggiornamento_prezzo(partecipante, dettagli_calcolo, db)
 
     return RedirectResponse(url="/dashboard?ok=1", status_code=303)
 
@@ -1026,6 +1055,19 @@ def pagamenti_lista(
 
     pagamenti = query.order_by(Pagamento.id).all()
 
+    ricevute_per_partecipante: dict[int, list] = {}
+    partecipante_ids = [p.partecipante_id for p in pagamenti]
+    if partecipante_ids:
+        righe = (
+            db.query(RicevutaPartecipante.partecipante_id, RicevutaPagamento)
+            .join(RicevutaPagamento, RicevutaPartecipante.ricevuta_id == RicevutaPagamento.id)
+            .filter(RicevutaPartecipante.partecipante_id.in_(partecipante_ids))
+            .order_by(RicevutaPagamento.created_at)
+            .all()
+        )
+        for partecipante_id, ricevuta in righe:
+            ricevute_per_partecipante.setdefault(partecipante_id, []).append(ricevuta)
+
     return templates.TemplateResponse(
         request=request,
         name="pagamenti.html",
@@ -1035,6 +1077,7 @@ def pagamenti_lista(
             "pagamenti": pagamenti,
             "stato_filtro": stato,
             "evento_corrente": evento,
+            "ricevute_per_partecipante": ricevute_per_partecipante,
         },
     )
 
@@ -1077,6 +1120,217 @@ def segna_pagamento_pagato(
     db.commit()
 
     return RedirectResponse(url="/pagamenti?ok=1", status_code=303)
+
+
+def _estensione_consentita(nome_file: str) -> str | None:
+    """Ritorna l'estensione (in minuscolo, con punto) se è tra quelle ammesse per le ricevute, altrimenti None."""
+    estensione = os.path.splitext(nome_file)[1].lower()
+    return estensione if estensione in {".pdf", ".jpg", ".jpeg", ".png"} else None
+
+
+CONTENT_TYPE_PER_ESTENSIONE = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+
+DIMENSIONE_MASSIMA_RICEVUTA_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
+@app.get("/pagamenti/ricevute/{ricevuta_id}/scarica")
+def scarica_ricevuta(ricevuta_id: int, request: Request, db: Session = Depends(get_db)):
+    username = get_current_operatore_username(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=303)
+
+    ricevuta = db.query(RicevutaPagamento).filter(RicevutaPagamento.id == ricevuta_id).first()
+    if not ricevuta:
+        raise HTTPException(status_code=404, detail="Ricevuta non trovata.")
+
+    try:
+        contenuto, content_type = scarica_file(ricevuta.storage_path)
+    except StorageServiceError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return Response(
+        content=contenuto,
+        media_type=ricevuta.content_type or content_type,
+        headers={"Content-Disposition": f'inline; filename="{ricevuta.nome_file_originale}"'},
+    )
+
+
+@app.post("/pagamenti/ricevute/{ricevuta_id}/verifica")
+def verifica_ricevuta(ricevuta_id: int, request: Request, db: Session = Depends(get_db)):
+    """Segna/rimuove la verifica manuale di una ricevuta. Il controllo che il
+    bonifico corrisponda davvero all'importo dovuto resta sempre a carico
+    dell'operatore: qui si registra solo l'esito di quel controllo."""
+    username = get_current_operatore_username(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=303)
+
+    ricevuta = db.query(RicevutaPagamento).filter(RicevutaPagamento.id == ricevuta_id).first()
+    if not ricevuta:
+        raise HTTPException(status_code=404, detail="Ricevuta non trovata.")
+
+    ricevuta.verificata = not ricevuta.verificata
+    ricevuta.verificata_da = username if ricevuta.verificata else None
+    ricevuta.verificata_il = datetime.now() if ricevuta.verificata else None
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="ricevuta_pagamento",
+            oggetto_id=ricevuta.id,
+            azione="ricevuta_verificata" if ricevuta.verificata else "ricevuta_verifica_rimossa",
+            operatore=username,
+            dettagli={"famiglia_id": ricevuta.famiglia_id, "nome_file": ricevuta.nome_file_originale},
+        )
+    )
+    db.commit()
+
+    return RedirectResponse(url="/pagamenti?ok=1", status_code=303)
+
+
+@app.post("/pagamenti/ricevute/{ricevuta_id}/elimina")
+def elimina_ricevuta(ricevuta_id: int, request: Request, db: Session = Depends(get_db)):
+    """Elimina una ricevuta caricata per errore/duplicata (es. file sbagliato)."""
+    username = get_current_operatore_username(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=303)
+
+    ricevuta = db.query(RicevutaPagamento).filter(RicevutaPagamento.id == ricevuta_id).first()
+    if not ricevuta:
+        raise HTTPException(status_code=404, detail="Ricevuta non trovata.")
+
+    try:
+        elimina_file(ricevuta.storage_path)
+    except StorageServiceError as exc:
+        logger.error("Eliminazione file su Supabase Storage fallita per ricevuta %s: %s", ricevuta.id, exc)
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="ricevuta_pagamento",
+            oggetto_id=ricevuta.id,
+            azione="ricevuta_eliminata",
+            operatore=username,
+            dettagli={"famiglia_id": ricevuta.famiglia_id, "nome_file": ricevuta.nome_file_originale},
+        )
+    )
+    db.delete(ricevuta)
+    db.commit()
+
+    return RedirectResponse(url="/pagamenti?ok=1", status_code=303)
+
+
+@app.get("/ricevute/{token}")
+def ricevute_pagina(token: str, request: Request, db: Session = Depends(get_db)):
+    famiglia = db.query(Famiglia).filter(Famiglia.token_ricevute == token).first()
+    if not famiglia:
+        raise HTTPException(status_code=404, detail="Link non valido.")
+
+    partecipanti = (
+        db.query(Partecipante)
+        .filter(Partecipante.famiglia_id == famiglia.id, Partecipante.stato_iscrizione != "Annullata")
+        .order_by(Partecipante.id)
+        .all()
+    )
+    ricevute = (
+        db.query(RicevutaPagamento)
+        .options(joinedload(RicevutaPagamento.partecipanti_coperti).joinedload(RicevutaPartecipante.partecipante))
+        .filter(RicevutaPagamento.famiglia_id == famiglia.id)
+        .order_by(RicevutaPagamento.created_at.desc())
+        .all()
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="ricevute_pagamento.html",
+        context={
+            "title": "Carica ricevuta di pagamento",
+            "famiglia": famiglia,
+            "partecipanti": partecipanti,
+            "ricevute": ricevute,
+            "token": token,
+        },
+    )
+
+
+@app.post("/ricevute/{token}")
+async def ricevute_upload(
+    token: str,
+    request: Request,
+    partecipante_ids: list[int] = Form([]),
+    note: str = Form(""),
+    file: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    famiglia = db.query(Famiglia).filter(Famiglia.token_ricevute == token).first()
+    if not famiglia:
+        raise HTTPException(status_code=404, detail="Link non valido.")
+
+    partecipanti_validi_ids = {
+        p.id
+        for p in db.query(Partecipante.id).filter(Partecipante.famiglia_id == famiglia.id).all()
+    }
+    selezionati = [pid for pid in partecipante_ids if pid in partecipanti_validi_ids]
+    if not selezionati:
+        return RedirectResponse(
+            url=f"/ricevute/{token}?errore=Seleziona almeno un partecipante coperto da questa ricevuta.",
+            status_code=303,
+        )
+
+    file_validi = [f for f in file if f.filename]
+    if not file_validi:
+        return RedirectResponse(
+            url=f"/ricevute/{token}?errore=Seleziona almeno un file da caricare.", status_code=303
+        )
+
+    for upload in file_validi:
+        estensione = _estensione_consentita(upload.filename)
+        if not estensione:
+            return RedirectResponse(
+                url=f"/ricevute/{token}?errore=Formato di '{upload.filename}' non supportato "
+                "(sono ammessi solo PDF, JPG e PNG).",
+                status_code=303,
+            )
+
+        contenuto = await upload.read()
+        if len(contenuto) > DIMENSIONE_MASSIMA_RICEVUTA_BYTES:
+            return RedirectResponse(
+                url=f"/ricevute/{token}?errore='{upload.filename}' supera la dimensione massima consentita (8 MB).",
+                status_code=303,
+            )
+
+        storage_path = f"famiglia_{famiglia.id}/{uuid.uuid4().hex}{estensione}"
+        content_type = CONTENT_TYPE_PER_ESTENSIONE.get(estensione, "application/octet-stream")
+
+        try:
+            carica_file(storage_path, contenuto, content_type)
+        except StorageServiceError as exc:
+            logger.error("Upload ricevuta fallito per famiglia %s: %s", famiglia.id, exc)
+            return RedirectResponse(
+                url=f"/ricevute/{token}?errore=Caricamento fallito, riprova tra qualche minuto "
+                "o scrivici rispondendo all'email di conferma iscrizione.",
+                status_code=303,
+            )
+
+        ricevuta = RicevutaPagamento(
+            famiglia_id=famiglia.id,
+            nome_file_originale=upload.filename,
+            storage_path=storage_path,
+            content_type=content_type,
+            dimensione_bytes=len(contenuto),
+            note=note or None,
+        )
+        db.add(ricevuta)
+        db.flush()
+
+        for partecipante_id in selezionati:
+            db.add(RicevutaPartecipante(ricevuta_id=ricevuta.id, partecipante_id=partecipante_id))
+
+    db.commit()
+
+    return RedirectResponse(url=f"/ricevute/{token}?ok=1", status_code=303)
 
 
 

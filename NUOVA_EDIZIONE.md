@@ -14,7 +14,10 @@ Prima di cancellare qualsiasi dato, esporta un backup dal pannello Supabase
 Nel SQL Editor di Supabase esegui, in ordine:
 
 1. `sql/reset_dati.sql` — svuota iscrizioni, partecipanti, pagamenti, log
-   eventi e tariffe (mantiene gli account operatore).
+   eventi e tariffe (mantiene gli account operatore). Elimina anche le righe
+   di `ricevute_pagamento` (via CASCADE), ma **non** i file già caricati su
+   Supabase Storage: svuota manualmente il bucket (Storage → bucket
+   ricevute-pagamento → seleziona tutto → elimina) se vuoi liberare spazio.
 2. Se serve ripartire anche da capo con gli account operatore, decommenta
    la riga finale dello stesso script prima di eseguirlo.
 

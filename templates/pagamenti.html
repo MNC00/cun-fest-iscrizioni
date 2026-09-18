@@ -60,6 +60,7 @@
                         <th>Stato</th>
                         <th>Metodo</th>
                         <th>Data pagamento</th>
+                        <th>Ricevute</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -82,6 +83,32 @@
                         </td>
                         <td>{{ pagamento.metodo or "-" }}</td>
                         <td>{{ pagamento.data_pagamento or "-" }}</td>
+                        <td class="small">
+                            {% set ricevute = ricevute_per_partecipante.get(pagamento.partecipante_id, []) %}
+                            {% if not ricevute %}
+                            <span class="text-muted">Nessuna</span>
+                            {% else %}
+                            {% for ricevuta in ricevute %}
+                            <div class="d-flex align-items-center gap-1 mb-1">
+                                <a href="/pagamenti/ricevute/{{ ricevuta.id }}/scarica" target="_blank">{{ ricevuta.nome_file_originale }}</a>
+                                {% if ricevuta.verificata %}
+                                <span class="badge bg-success">Verificata</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Da verificare</span>
+                                {% endif %}
+                                <form method="post" action="/pagamenti/ricevute/{{ ricevuta.id }}/verifica" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm py-0 px-1">
+                                        {{ "Annulla verifica" if ricevuta.verificata else "Verifica" }}
+                                    </button>
+                                </form>
+                                <form method="post" action="/pagamenti/ricevute/{{ ricevuta.id }}/elimina" class="d-inline"
+                                      onsubmit="return confirm('Eliminare questa ricevuta?');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm py-0 px-1">&times;</button>
+                                </form>
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                        </td>
                         <td>
                             {% if pagamento.stato != "Pagato" %}
                             <button type="button" class="btn btn-sm btn-outline-success"

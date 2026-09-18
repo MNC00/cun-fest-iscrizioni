@@ -14,8 +14,11 @@ CREATE TABLE IF NOT EXISTS famiglie (
     email TEXT NOT NULL,
     telefono TEXT,
     zona_provenienza TEXT,
+    token_ricevute TEXT UNIQUE, -- accesso alla pagina pubblica di upload ricevute
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS ix_famiglie_token_ricevute ON famiglie(token_ricevute);
 
 CREATE TABLE IF NOT EXISTS partecipanti (
     id SERIAL PRIMARY KEY,
@@ -107,3 +110,27 @@ CREATE TABLE IF NOT EXISTS log_eventi (
 );
 
 CREATE INDEX IF NOT EXISTS ix_log_eventi_oggetto ON log_eventi(oggetto_tipo, oggetto_id);
+
+CREATE TABLE IF NOT EXISTS ricevute_pagamento (
+    id SERIAL PRIMARY KEY,
+    famiglia_id INTEGER REFERENCES famiglie(id) ON DELETE CASCADE NOT NULL,
+    nome_file_originale TEXT NOT NULL,
+    storage_path TEXT NOT NULL UNIQUE, -- percorso su Supabase Storage
+    content_type TEXT,
+    dimensione_bytes INTEGER,
+    note TEXT,
+    verificata BOOLEAN DEFAULT FALSE,  -- controllo manuale dell'operatore (mai automatico)
+    verificata_da TEXT,
+    verificata_il TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_ricevute_pagamento_famiglia_id ON ricevute_pagamento(famiglia_id);
+
+CREATE TABLE IF NOT EXISTS ricevuta_partecipanti (
+    ricevuta_id INTEGER REFERENCES ricevute_pagamento(id) ON DELETE CASCADE,
+    partecipante_id INTEGER REFERENCES partecipanti(id) ON DELETE CASCADE,
+    PRIMARY KEY (ricevuta_id, partecipante_id)
+);
+
+CREATE INDEX IF NOT EXISTS ix_ricevuta_partecipanti_partecipante_id ON ricevuta_partecipanti(partecipante_id);

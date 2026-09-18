@@ -25,6 +25,7 @@ class Famiglia(Base):
     email = Column(String, nullable=False)
     telefono = Column(String)
     zona_provenienza = Column(String)
+    token_ricevute = Column(String, unique=True, index=True)  # accesso alla pagina pubblica di upload ricevute
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     partecipanti = relationship(
@@ -134,3 +135,49 @@ class LogEvento(Base):
     operatore = Column(String)
     dettagli = Column(JSONB)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RicevutaPagamento(Base):
+    """Una ricevuta (es. bonifico) caricata dalla famiglia. Può coprire uno o
+    più partecipanti dello stesso nucleo (vedi RicevutaPartecipante): un unico
+    bonifico può pagare l'intero nucleo, oppure la famiglia può caricare più
+    ricevute separate per pagare partecipanti diversi in momenti diversi."""
+
+    __tablename__ = "ricevute_pagamento"
+
+    id = Column(Integer, primary_key=True)
+    famiglia_id = Column(Integer, ForeignKey("famiglie.id", ondelete="CASCADE"), nullable=False)
+    nome_file_originale = Column(String, nullable=False)
+    storage_path = Column(String, nullable=False, unique=True)  # percorso su Supabase Storage
+    content_type = Column(String)
+    dimensione_bytes = Column(Integer)
+    note = Column(Text)  # testo libero facoltativo inserito da chi carica (es. riferimento bonifico)
+    verificata = Column(Boolean, default=False)  # controllo manuale dell'operatore (mai automatico)
+    verificata_da = Column(String)  # username dell'operatore che ha verificato
+    verificata_il = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    famiglia = relationship("Famiglia", backref="ricevute")
+    partecipanti_coperti = relationship(
+        "RicevutaPartecipante",
+        back_populates="ricevuta",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class RicevutaPartecipante(Base):
+    """Associazione N:N tra una ricevuta e i partecipanti che copre."""
+
+    __tablename__ = "ricevuta_partecipanti"
+
+    ricevuta_id = Column(
+        Integer, ForeignKey("ricevute_pagamento.id", ondelete="CASCADE"), primary_key=True
+    )
+    partecipante_id = Column(
+        Integer, ForeignKey("partecipanti.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    ricevuta = relationship("RicevutaPagamento", back_populates="partecipanti_coperti")
+    partecipante = relationship("Partecipante", backref="ricevute_associate")
+
