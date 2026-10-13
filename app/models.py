@@ -152,6 +152,9 @@ class RicevutaPagamento(Base):
     content_type = Column(String)
     dimensione_bytes = Column(Integer)
     note = Column(Text)  # testo libero facoltativo inserito da chi carica (es. riferimento bonifico)
+    drive_file_id = Column(String)
+    drive_copia_stato = Column(String, nullable=False, default="non_configurata")
+    drive_errore = Column(Text)
     verificata = Column(Boolean, default=False)  # controllo manuale dell'operatore (mai automatico)
     verificata_da = Column(String)  # username dell'operatore che ha verificato
     verificata_il = Column(DateTime(timezone=True))

@@ -10,6 +10,7 @@ quindi funziona anche sui piani gratuiti di hosting (es. Render) che
 bloccano il traffico in uscita sulle porte 25/465/587.
 """
 import base64
+import html
 import logging
 import os
 import re
@@ -234,6 +235,49 @@ def costruisci_email_conferma(contesto: dict) -> dict:
     return {"oggetto": oggetto, "html": html, "testo": _html_a_testo(html)}
 
 
+def costruisci_email_conferma_nucleo(contesti: list[dict]) -> dict:
+    """Costruisce un'unica conferma con il riepilogo di tutti i partecipanti iscritti insieme."""
+    if not contesti:
+        raise ValueError("È necessario almeno un partecipante per costruire la conferma.")
+
+    anno = contesti[0]["anno"]
+    html_corpo = [
+        "<p>Ciao!</p>",
+        f"<p>Abbiamo ricevuto le iscrizioni al CUN Fest {anno}. Ecco il riepilogo del nucleo:</p>",
+    ]
+    link_ricevute = None
+
+    for contesto in contesti:
+        nome = html.escape(str(contesto["nome"]))
+        html_corpo.append(f"<h3>{nome}</h3>")
+        if contesto.get("isSoloPranzo"):
+            html_corpo.append("<p>Iscrizione al pranzo del CUN Fest.</p>")
+        else:
+            html_corpo.append(_riepilogo_soggiorno(contesto))
+
+        if contesto.get("hasPrezzo"):
+            html_corpo.append(f"<p>Costo dell'esperienza: <b>€{float(contesto['prezzo']):.2f}</b>.</p>")
+        else:
+            html_corpo.append(
+                "<p>Non è stato possibile calcolare il prezzo con i dati attuali. "
+                "Verifica date ed eventi selezionati; se il problema persiste, rispondi a questa email.</p>"
+            )
+
+        if contesto.get("linkAnnullamento"):
+            link_annullamento = html.escape(str(contesto["linkAnnullamento"]), quote=True)
+            html_corpo.append(_paragrafo_annullamento(link_annullamento))
+        link_ricevute = link_ricevute or contesto.get("linkRicevute")
+
+    html_corpo.append(_paragrafo_pagamento(link_ricevute))
+    html_corpo.append(_paragrafo_chiusura())
+    contenuto_html = "".join(html_corpo)
+    return {
+        "oggetto": "Conferma Iscrizione CUN Fest",
+        "html": contenuto_html,
+        "testo": _html_a_testo(contenuto_html),
+    }
+
+
 def costruisci_email_aggiornamento(contesto: dict) -> dict:
     """Email di aggiornamento prezzo (reinvio manuale). Stesso contesto di costruisci_email_conferma."""
     oggetto = "Aggiornamento prezzi CUN Fest"
@@ -434,6 +478,12 @@ def invia_email(
 def invia_conferma_iscrizione(email: str, contesto: dict) -> None:
     """Invia l'email di conferma iscrizione per un singolo partecipante."""
     pacchetto = costruisci_email_conferma(contesto)
+    invia_email(email, pacchetto["oggetto"], pacchetto["html"], pacchetto["testo"])
+
+
+def invia_conferma_nucleo(email: str, contesti: list[dict]) -> None:
+    """Invia una sola email di conferma per tutti i partecipanti del nucleo inviati insieme."""
+    pacchetto = costruisci_email_conferma_nucleo(contesti)
     invia_email(email, pacchetto["oggetto"], pacchetto["html"], pacchetto["testo"])
 
 

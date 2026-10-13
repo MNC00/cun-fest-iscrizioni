@@ -119,6 +119,9 @@ CREATE TABLE IF NOT EXISTS ricevute_pagamento (
     content_type TEXT,
     dimensione_bytes INTEGER,
     note TEXT,
+    drive_file_id TEXT,
+    drive_copia_stato TEXT NOT NULL DEFAULT 'non_configurata',
+    drive_errore TEXT,
     verificata BOOLEAN DEFAULT FALSE,  -- controllo manuale dell'operatore (mai automatico)
     verificata_da TEXT,
     verificata_il TIMESTAMPTZ,

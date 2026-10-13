@@ -1,0 +1,59 @@
+body {
+	min-width: 320px;
+}
+
+.container,
+.container-fluid,
+.card-body {
+	min-width: 0;
+}
+
+.table-responsive {
+	overscroll-behavior-x: contain;
+}
+
+.table-responsive td,
+.table-responsive th {
+	overflow-wrap: anywhere;
+}
+
+.public-nav .navbar-nav,
+.operator-header nav {
+	flex-wrap: wrap;
+}
+
+@media (max-width: 767.98px) {
+	.public-nav .container {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.public-nav .navbar-nav {
+		flex-direction: row;
+		gap: 0.25rem 0.5rem;
+	}
+
+	.public-nav .nav-link {
+		padding-inline: 0.4rem;
+	}
+
+	.operator-header {
+		align-items: flex-start !important;
+	}
+
+	.operator-header > div {
+		width: 100%;
+	}
+
+	.operator-header nav {
+		margin-inline: -0.35rem;
+	}
+
+	.operator-header .nav-link {
+		padding: 0.35rem 0.45rem;
+	}
+
+	.table-responsive {
+		margin-inline: -0.25rem;
+	}
+}

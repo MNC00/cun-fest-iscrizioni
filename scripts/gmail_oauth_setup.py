@@ -14,9 +14,9 @@ Prerequisiti (da fare una sola volta su https://console.cloud.google.com):
 Uso:
     python scripts/gmail_oauth_setup.py
 
-Lo script apre il browser, chiede di autenticarti con l'account Gmail che
-invierà le email (es. iscrizionicunfest@gmail.com) e stampa il refresh token
-da salvare come variabile d'ambiente GMAIL_REFRESH_TOKEN (in .env e su Render).
+Lo script apre il browser, chiede di autenticarti con l'account Google che
+invierà le email e gestirà la cartella delle ricevute, poi stampa il refresh
+token da salvare come variabile d'ambiente GMAIL_REFRESH_TOKEN.
 """
 import http.server
 import threading
@@ -27,7 +27,7 @@ import httpx
 
 REDIRECT_PORT = 8765
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/"
-SCOPE = "https://www.googleapis.com/auth/gmail.send"
+SCOPE = "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/drive.file"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
@@ -122,6 +122,7 @@ def main() -> None:
     print(f"GMAIL_CLIENT_SECRET={client_secret}")
     print(f"GMAIL_REFRESH_TOKEN={refresh_token}")
     print("GMAIL_SENDER_EMAIL=CUN Fest <indirizzo-usato-per-autorizzare@gmail.com>")
+    print("Esegui anche scripts/gdrive_folder_setup.py per creare la cartella ricevute.")
 
 
 if __name__ == "__main__":

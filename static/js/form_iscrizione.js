@@ -226,9 +226,61 @@ document.addEventListener("DOMContentLoaded", function () {
     radioTipoIscrizione.forEach((radio) => radio.addEventListener("change", aggiornaTipoIscrizione));
     aggiornaTipoIscrizione();
 
+    const ETICHETTE_CAMPI = {
+        nome: "nome",
+        cognome: "cognome",
+        email: "email",
+        telefono: "telefono",
+        data_arrivo: "data di arrivo",
+        data_partenza: "data di partenza",
+        data_nascita: "data di nascita",
+        pasto_arrivo: "pasto di arrivo",
+        pasto_partenza: "pasto di partenza",
+    };
+
+    function formattaErroreValidazione(errore) {
+        const posizione = Array.isArray(errore.loc) ? errore.loc : [];
+        const indicePartecipante = posizione.indexOf("partecipanti");
+        const campo = [...posizione].reverse().find((parte) => typeof parte === "string");
+        const etichetta = ETICHETTE_CAMPI[campo];
+        let messaggio = String(errore.msg || "Verifica i dati inseriti.").replace(/^Value error, /, "");
+
+        if (errore.type === "missing" || messaggio === "Field required") {
+            messaggio = "Campo obbligatorio.";
+        } else if (errore.type && errore.type.startsWith("date_") || /valid date/i.test(messaggio)) {
+            messaggio = "Inserisci una data valida.";
+        } else if (/valid email/i.test(messaggio)) {
+            messaggio = "Inserisci un indirizzo email valido.";
+        }
+
+        if (!etichetta) return messaggio;
+        const partecipante = indicePartecipante >= 0 ? posizione[indicePartecipante + 1] : null;
+        const prefisso = Number.isInteger(partecipante) ? `Partecipante ${partecipante + 1}, ` : "";
+        return `${prefisso}${etichetta}: ${messaggio}`;
+    }
+
     function mostraAlert(tipo, messaggio) {
-        alertBox.innerHTML =
-            '<div class="alert alert-' + tipo + '" role="alert">' + messaggio + "</div>";
+        const alert = document.createElement("div");
+        alert.className = `alert alert-${tipo}`;
+        alert.setAttribute("role", "alert");
+
+        const messaggi = Array.isArray(messaggio)
+            ? messaggio.map(formattaErroreValidazione)
+            : [String(messaggio)];
+        if (messaggi.length === 1) {
+            alert.textContent = messaggi[0];
+        } else {
+            const elenco = document.createElement("ul");
+            elenco.className = "mb-0";
+            messaggi.forEach((testo) => {
+                const elemento = document.createElement("li");
+                elemento.textContent = testo;
+                elenco.appendChild(elemento);
+            });
+            alert.appendChild(elenco);
+        }
+
+        alertBox.replaceChildren(alert);
     }
 
     function raccogliPartecipanti() {
@@ -330,7 +382,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     aggiornaTipoIscrizione();
                 } else {
                     const dettaglio = data.detail || "Errore durante l'invio dell'iscrizione.";
-                    mostraAlert("danger", "Errore: " + dettaglio);
+                    mostraAlert("danger", Array.isArray(dettaglio) ? dettaglio : "Errore: " + dettaglio);
                 }
             })
             .catch(() => {

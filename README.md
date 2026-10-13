@@ -25,12 +25,13 @@ App su `http://127.0.0.1:8000`.
 | `DATABASE_URL` | Connection string PostgreSQL (Supabase) |
 | `SECRET_KEY` | Chiave per firmare i cookie di sessione operatore |
 | `GMAIL_CLIENT_ID` / `GMAIL_CLIENT_SECRET` | Credenziali OAuth create su Google Cloud Console (vedi `scripts/gmail_oauth_setup.py`) |
-| `GMAIL_REFRESH_TOKEN` | Ottenuto una tantum eseguendo `scripts/gmail_oauth_setup.py` |
+| `GMAIL_REFRESH_TOKEN` | Ottenuto eseguendo `scripts/gmail_oauth_setup.py` con gli scope Gmail e Drive |
 | `GMAIL_SENDER_EMAIL` | Mittente, es. `CUN Fest <iscrizionicunfest@gmail.com>` |
 | `BASE_URL` | URL base dell'app (usato nei link email) |
 | `SUPABASE_URL` | URL del progetto Supabase (Project Settings → API), per le ricevute di pagamento |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key del progetto Supabase (segreta: bypassa le RLS, va usata solo dal backend) |
 | `SUPABASE_STORAGE_BUCKET` | Nome del bucket di Storage per le ricevute (default `ricevute-pagamento`, va creato come bucket **privato** su Supabase) |
+| `GOOGLE_DRIVE_FOLDER_ID` | ID della cartella Drive dove copiare le ricevute |
 
 ## Database
 
@@ -56,6 +57,15 @@ sopravvivono a un riavvio/deploy. Le ricevute vengono quindi salvate su
 
 Su un'installazione esistente, esegui anche `sql/alter_ricevute_pagamento.sql`.
 
+### Copia condivisibile su Google Drive
+
+1. Esegui nuovamente `python scripts/gmail_oauth_setup.py` e autorizza l'account Google. Il consenso include `gmail.send` e `drive.file`; aggiorna `GMAIL_REFRESH_TOKEN` negli ambienti di esecuzione con il nuovo token.
+2. Esegui `python scripts/gdrive_folder_setup.py` con le credenziali aggiornate e configura il valore stampato come `GOOGLE_DRIVE_FOLDER_ID`.
+3. Condividi la cartella da Google Drive con le persone o gli account esterni desiderati. L'app non rende pubblici i file né genera link anonimi.
+4. Su database esistenti, esegui `sql/alter_ricevute_google_drive.sql` prima di distribuire la versione aggiornata.
+
+Supabase resta lo storage privato usato dall'app. Se la copia Drive fallisce, il caricamento originale resta disponibile e l'operatore può riprovare da `/pagamenti`.
+
 ## Funzionalità principali
 
 - **Iscrizione pubblica** (`/iscriviti`): form famiglia + partecipanti, salva `Famiglia`/`Partecipante`.
@@ -65,7 +75,7 @@ Su un'installazione esistente, esegui anche `sql/alter_ricevute_pagamento.sql`.
 - **Pagamenti** (`/pagamenti`): stato pagamento per partecipante, segna come pagato.
 - **Comunicazioni di massa** (`/comunicazioni`): invio email filtrato per fascia/stato/zona.
 - **Report pasti** (`/report-pasti`): conteggio giornaliero colazioni/pranzi/cene, export CSV.
-- **Ricevute di pagamento** (`/ricevute/{token}`, pubblica): le famiglie caricano le ricevute dei bonifici (uno o più file per un unico bonifico dell'intero nucleo, oppure ricevute separate per bonifici parziali); il link è incluso nelle email di conferma/aggiornamento prezzo. I file sono salvati su Supabase Storage (non sul filesystem di Render, effimero). Gli operatori le vedono/scaricano/verificano da `/pagamenti` — la verifica che l'importo corrisponda resta sempre una scelta manuale dell'operatore, mai automatica.
+- **Ricevute di pagamento** (`/ricevute/{token}`, pubblica): le famiglie caricano le ricevute dei bonifici (uno o più file per un unico bonifico dell'intero nucleo, oppure ricevute separate per bonifici parziali); il link è incluso nelle email di conferma/aggiornamento prezzo. I file sono salvati su Supabase Storage privato e copiati nella cartella Drive configurata. Gli operatori vedono note, stato copia e verifica da `/pagamenti`; la verifica dell'importo resta manuale.
 - **Configurazione** (`/configurazione`, solo operatori amministratori — flag `Operatore.is_admin`): gestione di date evento, tariffe e account operatore da interfaccia web.
 
 Ogni azione rilevante viene tracciata in `log_eventi`.
@@ -74,5 +84,6 @@ Ogni azione rilevante viene tracciata in `log_eventi`.
 
 - `scripts/crea_operatore.py` — crea/aggiorna un account operatore (password, nome, stato attivo).
 - `scripts/gmail_oauth_setup.py` — da eseguire una tantum in locale per ottenere `GMAIL_REFRESH_TOKEN` (vedi commenti nello script per il setup su Google Cloud Console).
+- `scripts/gdrive_folder_setup.py` — crea la cartella Drive da usare per le ricevute e stampa l'ID da configurare.
 
 Per i dettagli tecnici (modelli, moduli, flussi) vedi [ARCHITECTURE.md](ARCHITECTURE.md).

@@ -27,6 +27,7 @@ from app.calcolo import (
     ottieni_periodo_evento,
 )
 from app.database import get_db
+from app.drive_service import DriveServiceError, carica_ricevuta_drive
 from app.email_service import (
     EmailServiceError,
     formatta_data_italiana,
@@ -35,7 +36,7 @@ from app.email_service import (
     invia_annullamento,
     invia_annullamento_nucleo,
     invia_comunicazione_massa,
-    invia_conferma_iscrizione,
+    invia_conferma_nucleo,
 )
 from app.models import (
     Famiglia,
@@ -288,14 +289,36 @@ def iscriviti(payload: IscrizioneFamigliaRequest, db: Session = Depends(get_db))
 
         for partecipante in partecipanti_creati:
             try:
-                invia_conferma_iscrizione(
-                    email=famiglia.email,
-                    contesto=_contesto_email_partecipante(partecipante, db),
+                calcola_prezzo_partecipante(partecipante, db)
+                sincronizza_pagamento(partecipante, db)
+                db.commit()
+            except CalcoloPrezzoError as exc:
+                db.rollback()
+                logger.info(
+                    "Prezzo non calcolabile in fase di iscrizione per partecipante %s: %s",
+                    partecipante.id,
+                    exc,
                 )
-            except EmailServiceError as exc:
-                logger.error(
-                    "Invio email di conferma fallito per partecipante %s: %s", partecipante.id, exc
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Errore inatteso nel calcolo iniziale del prezzo per partecipante %s",
+                    partecipante.id,
                 )
+
+        try:
+            invia_conferma_nucleo(
+                email=famiglia.email,
+                contesti=[_contesto_email_partecipante(p, db) for p in partecipanti_creati],
+            )
+        except EmailServiceError as exc:
+            logger.error(
+                "Invio email di conferma fallito per famiglia %s: %s", famiglia.id, exc
+            )
+        except Exception:
+            logger.exception(
+                "Preparazione o invio della conferma fallito per famiglia %s", famiglia.id
+            )
 
         return {
             "status": "ok",
@@ -841,15 +864,21 @@ def annulla_iscrizione_operatore_form(partecipante_id: int, request: Request, db
         raise HTTPException(status_code=404, detail="Partecipante non trovato.")
 
     if partecipante.stato_iscrizione == "Annullata":
+        altri_partecipanti = [
+            p
+            for p in partecipante.famiglia.partecipanti
+            if p.id != partecipante.id and p.stato_iscrizione != "Annullata"
+        ]
         return templates.TemplateResponse(
             request=request,
             name="annulla_self_service.html",
             context={
                 "title": "Annulla iscrizione",
                 "partecipante": partecipante,
-                "altri_partecipanti": [],
+                "altri_partecipanti": altri_partecipanti,
                 "gia_annullata": True,
                 "is_operatore": True,
+                "is_referente": _e_referente(partecipante, partecipante.famiglia),
             },
         )
 
@@ -1181,6 +1210,37 @@ def scarica_ricevuta(ricevuta_id: int, request: Request, db: Session = Depends(g
     )
 
 
+@app.post("/pagamenti/ricevute/{ricevuta_id}/drive-retry")
+def riprova_copia_ricevuta_drive(
+    ricevuta_id: int, request: Request, db: Session = Depends(get_db)
+):
+    username = get_current_operatore_username(request)
+    if not username:
+        return RedirectResponse(url="/login", status_code=303)
+
+    ricevuta = db.query(RicevutaPagamento).filter(RicevutaPagamento.id == ricevuta_id).first()
+    if not ricevuta:
+        raise HTTPException(status_code=404, detail="Ricevuta non trovata.")
+
+    try:
+        contenuto, content_type = scarica_file(ricevuta.storage_path)
+        ricevuta.drive_file_id = carica_ricevuta_drive(
+            ricevuta.nome_file_originale,
+            contenuto,
+            ricevuta.content_type or content_type,
+        )
+        ricevuta.drive_copia_stato = "completata"
+        ricevuta.drive_errore = None
+        db.commit()
+        return RedirectResponse(url="/pagamenti?ok=1&drive=ok", status_code=303)
+    except (StorageServiceError, DriveServiceError) as exc:
+        ricevuta.drive_copia_stato = "errore"
+        ricevuta.drive_errore = str(exc)
+        db.commit()
+        logger.error("Retry copia Drive fallito per ricevuta %s: %s", ricevuta.id, exc)
+        return RedirectResponse(url="/pagamenti?drive=errore", status_code=303)
+
+
 @app.post("/pagamenti/ricevute/{ricevuta_id}/verifica")
 def verifica_ricevuta(ricevuta_id: int, request: Request, db: Session = Depends(get_db)):
     """Segna/rimuove la verifica manuale di una ricevuta. Il controllo che il
@@ -1306,6 +1366,7 @@ async def ricevute_upload(
             url=f"/ricevute/{token}?errore=Seleziona almeno un file da caricare.", status_code=303
         )
 
+    ha_errori_drive = False
     for upload in file_validi:
         estensione = _estensione_consentita(upload.filename)
         if not estensione:
@@ -1342,7 +1403,18 @@ async def ricevute_upload(
             content_type=content_type,
             dimensione_bytes=len(contenuto),
             note=note or None,
+            drive_copia_stato="in_attesa",
         )
+        try:
+            ricevuta.drive_file_id = carica_ricevuta_drive(
+                upload.filename, contenuto, content_type
+            )
+            ricevuta.drive_copia_stato = "completata"
+        except DriveServiceError as exc:
+            ricevuta.drive_copia_stato = "errore"
+            ricevuta.drive_errore = str(exc)
+            ha_errori_drive = True
+            logger.error("Copia Drive fallita per famiglia %s: %s", famiglia.id, exc)
         db.add(ricevuta)
         db.flush()
 
@@ -1351,7 +1423,8 @@ async def ricevute_upload(
 
     db.commit()
 
-    return RedirectResponse(url=f"/ricevute/{token}?ok=1", status_code=303)
+    query_drive = "&drive=errore" if ha_errori_drive else ""
+    return RedirectResponse(url=f"/ricevute/{token}?ok=1{query_drive}", status_code=303)
 
 
 

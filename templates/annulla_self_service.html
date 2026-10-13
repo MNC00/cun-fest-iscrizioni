@@ -26,6 +26,17 @@
         <div class="alert alert-info">
             Questa iscrizione ({{ partecipante.nome }} {{ partecipante.cognome }}) risulta già annullata.
         </div>
+        {% if is_operatore and altri_partecipanti and is_referente %}
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <p>Nel nucleo risultano ancora attivi: {{ altri_partecipanti | map(attribute='nome') | list | join(', ') }}.</p>
+                <form method="post" action="{{ form_action }}" onsubmit="return confirm('Annullare tutte le iscrizioni ancora attive di questo nucleo?');">
+                    <input type="hidden" name="azione" value="nucleo">
+                    <button type="submit" class="btn btn-danger">Annulla tutto il nucleo</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
         {% endif %}
     {% else %}
     <div class="card shadow-sm">
@@ -76,7 +87,7 @@
             </form>
 
             {% if altri_partecipanti and is_referente %}
-            <form method="post" action="{{ form_action }}">
+            <form method="post" action="{{ form_action }}" onsubmit="return confirm('Annullare tutte le iscrizioni di questo nucleo?');">
                 <input type="hidden" name="azione" value="nucleo">
                 <h2 class="h6">Annulla tutto il nucleo familiare</h2>
                 <p class="small text-muted">

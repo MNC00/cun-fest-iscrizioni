@@ -14,6 +14,11 @@
     {% if request.query_params.get('ok') == '1' %}
     <div class="alert alert-success">Pagamento registrato con successo.</div>
     {% endif %}
+    {% if request.query_params.get('drive') == 'ok' %}
+    <div class="alert alert-success">Copia della ricevuta su Google Drive completata.</div>
+    {% elif request.query_params.get('drive') == 'errore' %}
+    <div class="alert alert-warning">Copia Drive non riuscita. La ricevuta resta disponibile su Supabase; puoi riprovare dalla riga qui sotto.</div>
+    {% endif %}
 
     <div class="card shadow-sm mb-3">
         <div class="card-body">
@@ -49,6 +54,7 @@
             {% if not pagamenti %}
             <p class="text-muted mb-0">Nessun pagamento trovato per il filtro selezionato.</p>
             {% else %}
+            <div class="table-responsive">
             <table class="table table-striped align-middle">
                 <thead>
                     <tr>
@@ -89,8 +95,21 @@
                             <span class="text-muted">Nessuna</span>
                             {% else %}
                             {% for ricevuta in ricevute %}
-                            <div class="d-flex align-items-center gap-1 mb-1">
+                            <div class="d-flex align-items-center flex-wrap gap-1 mb-1">
                                 <a href="/pagamenti/ricevute/{{ ricevuta.id }}/scarica" target="_blank">{{ ricevuta.nome_file_originale }}</a>
+                                {% if ricevuta.note %}
+                                <span class="d-block text-body-secondary">Nota: {{ ricevuta.note }}</span>
+                                {% endif %}
+                                {% if ricevuta.drive_copia_stato == "completata" %}
+                                <span class="badge bg-success">Drive: copiata</span>
+                                {% elif ricevuta.drive_copia_stato == "errore" %}
+                                <span class="badge bg-warning text-dark">Drive: da copiare</span>
+                                <form method="post" action="/pagamenti/ricevute/{{ ricevuta.id }}/drive-retry" class="d-inline">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm py-0 px-1">Riprova copia</button>
+                                </form>
+                                {% elif ricevuta.drive_copia_stato == "non_configurata" %}
+                                <span class="badge bg-secondary">Drive non configurato</span>
+                                {% endif %}
                                 {% if ricevuta.verificata %}
                                 <span class="badge bg-success">Verificata</span>
                                 {% else %}
@@ -126,6 +145,7 @@
                     {% endfor %}
                 </tbody>
             </table>
+            </div>
             {% endif %}
         </div>
     </div>
