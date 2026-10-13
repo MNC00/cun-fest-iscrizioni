@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import Mock, patch
 
-from app.drive_service import DriveServiceError, carica_ricevuta_drive
+from app.drive_service import DriveServiceError, carica_ricevuta_drive, crea_cartella_ricevute
 from app.email_service import costruisci_email_conferma_nucleo, invia_conferma_nucleo
 
 
@@ -71,6 +71,18 @@ class DriveServiceTests(unittest.TestCase):
                 carica_ricevuta_drive("ricevuta.pdf", b"pdf-bytes", "application/pdf")
 
         token.assert_not_called()
+
+    def test_folder_creation_reports_google_forbidden_reason(self):
+        risposta = Mock(status_code=403)
+        risposta.json.return_value = {
+            "error": {"message": "Google Drive API has not been used in this project."}
+        }
+        with (
+            patch("app.drive_service._access_token", return_value="access-token"),
+            patch("app.drive_service.httpx.post", return_value=risposta),
+        ):
+            with self.assertRaisesRegex(DriveServiceError, "Google Drive API has not been used"):
+                crea_cartella_ricevute()
 
 
 if __name__ == "__main__":

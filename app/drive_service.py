@@ -16,6 +16,18 @@ class DriveServiceError(Exception):
     """Errore applicativo durante la copia di una ricevuta su Google Drive."""
 
 
+def _dettaglio_errore_google(risposta: httpx.Response) -> str:
+    try:
+        errore = risposta.json().get("error", {})
+    except ValueError:
+        errore = {}
+    if isinstance(errore, dict):
+        return str(errore.get("message") or errore.get("status") or "errore non dettagliato")
+    if isinstance(errore, str):
+        return errore
+    return "errore non dettagliato"
+
+
 def _credenziali() -> tuple[str, str, str]:
     client_id = os.getenv("GMAIL_CLIENT_ID", "")
     client_secret = os.getenv("GMAIL_CLIENT_SECRET", "")
@@ -68,8 +80,15 @@ def crea_cartella_ricevute() -> str:
         raise DriveServiceError("Impossibile creare la cartella su Google Drive.") from exc
 
     if risposta.status_code >= 400:
-        logger.error("Creazione cartella Google Drive fallita (status %s).", risposta.status_code)
-        raise DriveServiceError("Google Drive non ha creato la cartella delle ricevute.")
+        dettaglio = _dettaglio_errore_google(risposta)
+        logger.error(
+            "Creazione cartella Google Drive fallita (status %s): %s",
+            risposta.status_code,
+            dettaglio,
+        )
+        raise DriveServiceError(
+            f"Google Drive non ha creato la cartella delle ricevute (HTTP {risposta.status_code}: {dettaglio})."
+        )
 
     folder_id = risposta.json().get("id")
     if not folder_id:
@@ -100,8 +119,11 @@ def carica_ricevuta_drive(nome_file: str, contenuto: bytes, content_type: str) -
         raise DriveServiceError("Errore di rete durante la copia della ricevuta su Drive.") from exc
 
     if risposta.status_code >= 400:
-        logger.error("Upload Google Drive fallito (status %s).", risposta.status_code)
-        raise DriveServiceError("Google Drive non ha accettato la ricevuta.")
+        dettaglio = _dettaglio_errore_google(risposta)
+        logger.error("Upload Google Drive fallito (status %s): %s", risposta.status_code, dettaglio)
+        raise DriveServiceError(
+            f"Google Drive non ha accettato la ricevuta (HTTP {risposta.status_code}: {dettaglio})."
+        )
 
     file_id = risposta.json().get("id")
     if not file_id:
