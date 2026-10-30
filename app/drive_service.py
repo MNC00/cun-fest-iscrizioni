@@ -2,6 +2,8 @@
 import json
 import logging
 import os
+import re
+from urllib.parse import urlparse
 
 import httpx
 
@@ -14,6 +16,21 @@ UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
 
 class DriveServiceError(Exception):
     """Errore applicativo durante la copia di una ricevuta su Google Drive."""
+
+
+def normalizza_id_cartella(valore: str) -> str:
+    """Accetta l'ID Drive o un URL di cartella condivisa e restituisce l'ID."""
+    valore = valore.strip()
+    if valore.startswith(("https://", "http://")):
+        parti = [parte for parte in urlparse(valore).path.split("/") if parte]
+        try:
+            valore = parti[parti.index("folders") + 1]
+        except (ValueError, IndexError) as exc:
+            raise DriveServiceError("Inserisci un URL di cartella Google Drive valido.") from exc
+
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", valore):
+        raise DriveServiceError("Inserisci l'ID o il link di una cartella Google Drive valido.")
+    return valore
 
 
 def _dettaglio_errore_google(risposta: httpx.Response) -> str:
@@ -96,9 +113,14 @@ def crea_cartella_ricevute() -> str:
     return folder_id
 
 
-def carica_ricevuta_drive(nome_file: str, contenuto: bytes, content_type: str) -> str:
+def carica_ricevuta_drive(
+    nome_file: str,
+    contenuto: bytes,
+    content_type: str,
+    folder_id: str | None = None,
+) -> str:
     """Carica una ricevuta nella cartella configurata e restituisce l'ID Drive."""
-    folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+    folder_id = (folder_id or os.getenv("GOOGLE_DRIVE_FOLDER_ID", "")).strip()
     if not folder_id:
         raise DriveServiceError("Configura GOOGLE_DRIVE_FOLDER_ID per attivare la copia su Drive.")
 

@@ -31,7 +31,7 @@ App su `http://127.0.0.1:8000`.
 | `SUPABASE_URL` | URL del progetto Supabase (Project Settings → API), per le ricevute di pagamento |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key del progetto Supabase (segreta: bypassa le RLS, va usata solo dal backend) |
 | `SUPABASE_STORAGE_BUCKET` | Nome del bucket di Storage per le ricevute (default `ricevute-pagamento`, va creato come bucket **privato** su Supabase) |
-| `GOOGLE_DRIVE_FOLDER_ID` | ID della cartella Drive dove copiare le ricevute |
+| `GOOGLE_DRIVE_FOLDER_ID` | ID cartella Drive usato come fallback se non è stata scelta dalla configurazione amministrativa |
 
 ## Database
 
@@ -60,9 +60,10 @@ Su un'installazione esistente, esegui anche `sql/alter_ricevute_pagamento.sql`.
 ### Copia condivisibile su Google Drive
 
 1. Esegui nuovamente `python scripts/gmail_oauth_setup.py` e autorizza l'account Google. Il consenso include `gmail.send` e `drive.file`; aggiorna `GMAIL_REFRESH_TOKEN` negli ambienti di esecuzione con il nuovo token.
-2. Esegui `python scripts/gdrive_folder_setup.py` con le credenziali aggiornate e configura il valore stampato come `GOOGLE_DRIVE_FOLDER_ID`.
-3. Condividi la cartella da Google Drive con le persone o gli account esterni desiderati. L'app non rende pubblici i file né genera link anonimi.
-4. Su database esistenti, esegui `sql/alter_ricevute_google_drive.sql` prima di distribuire la versione aggiornata.
+2. Esegui `python scripts/gdrive_folder_setup.py` con le credenziali aggiornate per creare la cartella e ottenere ID/link.
+3. In **Configurazione → Google Drive**, un amministratore può incollare l'ID o il link della cartella. In alternativa, imposta `GOOGLE_DRIVE_FOLDER_ID` come fallback.
+4. Condividi la cartella da Google Drive con le persone o gli account esterni desiderati. L'app non rende pubblici i file né genera link anonimi.
+5. Su database esistenti, esegui `sql/alter_ricevute_google_drive.sql` e `sql/create_impostazioni_app.sql` prima di distribuire la versione aggiornata.
 
 Supabase resta lo storage privato usato dall'app. Se la copia Drive fallisce, il caricamento originale resta disponibile e l'operatore può riprovare da `/pagamenti`.
 

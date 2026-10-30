@@ -125,6 +125,14 @@ class Operatore(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class ImpostazioneApp(Base):
+    __tablename__ = "impostazioni_app"
+
+    chiave = Column(String, primary_key=True)
+    valore = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class LogEvento(Base):
     __tablename__ = "log_eventi"
 

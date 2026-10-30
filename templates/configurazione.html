@@ -28,7 +28,35 @@
         <li class="nav-item">
             <a class="nav-link {% if sezione == 'operatori' %}active{% endif %}" href="/configurazione?sezione=operatori">Operatori</a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link {% if sezione == 'drive' %}active{% endif %}" href="/configurazione?sezione=drive">Google Drive</a>
+        </li>
     </ul>
+
+    {% if sezione == 'drive' %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="h5 mb-3">Cartella delle ricevute</h2>
+            <p class="text-muted">Incolla il link di condivisione o l'ID della cartella Drive. L'account Google autorizzato dall'app deve poter scrivere nella cartella.</p>
+            <form method="post" action="/configurazione/drive/cartella" class="row g-2 align-items-end">
+                <div class="col-12 col-lg-9">
+                    <label class="form-label" for="url-o-id-drive">URL o ID cartella</label>
+                    <input type="text" class="form-control" id="url-o-id-drive" name="url_o_id"
+                           value="{{ cartella_drive or '' }}" autocomplete="off" required>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <button type="submit" class="btn btn-primary w-100">Salva cartella</button>
+                </div>
+            </form>
+            {% if cartella_drive %}
+            <p class="small text-muted mt-3 mb-0">Cartella attiva: <code>{{ cartella_drive }}</code></p>
+            {% else %}
+            <p class="small text-warning mt-3 mb-0">Nessuna cartella configurata. Le copie Drive resteranno in errore fino al salvataggio di una cartella.</p>
+            {% endif %}
+            <p class="small text-muted mt-2 mb-0">La scelta si applica ai nuovi caricamenti e ai retry. Le ricevute già copiate non vengono spostate automaticamente.</p>
+        </div>
+    </div>
+    {% endif %}
 
     {% if sezione == 'periodi' %}
     <div class="card shadow-sm">

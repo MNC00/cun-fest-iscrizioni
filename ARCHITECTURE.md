@@ -28,6 +28,7 @@ Non è usato un ORM migration tool: le modifiche di schema sono script SQL in `s
 - **Tariffa**: listino prezzi per fascia, con validità temporale.
 - **Pagamento**: 1:1 con `Partecipante`, importo dovuto/pagato, stato pagamento.
 - **Operatore**: utenti che accedono alla dashboard.
+- **ImpostazioneApp**: valori applicativi configurabili dagli amministratori, inclusa la cartella Google Drive delle ricevute.
 - **RicevutaPagamento** / **RicevutaPartecipante**: ricevute di bonifico caricate dalle famiglie (file su Supabase Storage, metadati su Postgres); relazione N:N con `Partecipante` perché una ricevuta può coprire uno, alcuni o tutti i partecipanti dello stesso nucleo. Verifica manuale dell'operatore (`verificata`/`verificata_da`/`verificata_il`), mai automatica.
 - **LogEvento**: audit log generico (`oggetto_tipo`, `oggetto_id`, `azione`, `operatore`, `dettagli` JSON) scritto ad ogni azione rilevante.
 
@@ -49,7 +50,7 @@ Funzioni `costruisci_email_*` generano `{oggetto, html, testo}` per i vari casi,
 Ogni partecipante riceve un `token_annullamento` univoco alla creazione, usato in un link incluso nelle email di conferma/aggiornamento (nessun login richiesto). Da quella pagina può annullare solo la propria iscrizione (indicando un nuovo referente per il nucleo, se restano altri iscritti) oppure annullare in un'unica soluzione tutto il nucleo familiare (un'unica email di recap con l'elenco di chi è stato annullato).
 
 **Ricevute di pagamento** (`GET/POST /ricevute/{token}`, `app/storage_service.py`)
-Ogni `Famiglia` ha un `token_ricevute` univoco usato nel link pubblico alle conferme email. La famiglia carica file PDF/JPG/PNG (max 8MB), associandoli ai partecipanti coperti. La copia canonica resta nel bucket privato Supabase; `app/drive_service.py` ne carica una copia nella cartella indicata da `GOOGLE_DRIVE_FOLDER_ID`. La cartella viene creata con `scripts/gdrive_folder_setup.py` e condivisa manualmente da Drive; l'app non abilita accesso pubblico. ID e stato della copia sono registrati su `RicevutaPagamento`. In caso di errore, l'originale resta disponibile su Supabase e gli operatori possono riprovare da `/pagamenti`. Note, stato e verifica manuale sono visibili agli operatori; il download continua a passare dal backend.
+Ogni `Famiglia` ha un `token_ricevute` univoco usato nel link pubblico alle conferme email. La famiglia carica file PDF/JPG/PNG (max 8MB), associandoli ai partecipanti coperti. La copia canonica resta nel bucket privato Supabase; `app/drive_service.py` ne carica una copia nella cartella scelta in Configurazione dagli amministratori (con `GOOGLE_DRIVE_FOLDER_ID` come fallback). La cartella viene creata con `scripts/gdrive_folder_setup.py` e condivisa manualmente da Drive; l'app non abilita accesso pubblico. ID e stato della copia sono registrati su `RicevutaPagamento`. In caso di errore, l'originale resta disponibile su Supabase e gli operatori possono riprovare da `/pagamenti`. Note, stato e verifica manuale sono visibili agli operatori; il download continua a passare dal backend.
 
 **Interfaccia responsive**
 Tutti i template pubblici e operatore usano Bootstrap e gli stili condivisi in `static/css/style.css`. Le tabelle dense sono contenute in wrapper `table-responsive`; le navigazioni si riadattano agli schermi stretti senza richiedere nuovi framework.

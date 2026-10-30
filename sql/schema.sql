@@ -99,6 +99,12 @@ CREATE TABLE IF NOT EXISTS operatori (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS impostazioni_app (
+    chiave TEXT PRIMARY KEY,
+    valore TEXT NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS log_eventi (
     id SERIAL PRIMARY KEY,
     oggetto_tipo TEXT,

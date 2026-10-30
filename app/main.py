@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 import logging
 import os
 import uuid
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -27,7 +28,7 @@ from app.calcolo import (
     ottieni_periodo_evento,
 )
 from app.database import get_db
-from app.drive_service import DriveServiceError, carica_ricevuta_drive
+from app.drive_service import DriveServiceError, carica_ricevuta_drive, normalizza_id_cartella
 from app.email_service import (
     EmailServiceError,
     formatta_data_italiana,
@@ -40,6 +41,7 @@ from app.email_service import (
 )
 from app.models import (
     Famiglia,
+    ImpostazioneApp,
     LogEvento,
     Operatore,
     Pagamento,
@@ -1228,6 +1230,7 @@ def riprova_copia_ricevuta_drive(
             ricevuta.nome_file_originale,
             contenuto,
             ricevuta.content_type or content_type,
+            folder_id=_cartella_drive_configurata(db),
         )
         ricevuta.drive_copia_stato = "completata"
         ricevuta.drive_errore = None
@@ -1407,7 +1410,10 @@ async def ricevute_upload(
         )
         try:
             ricevuta.drive_file_id = carica_ricevuta_drive(
-                upload.filename, contenuto, content_type
+                upload.filename,
+                contenuto,
+                content_type,
+                folder_id=_cartella_drive_configurata(db),
             )
             ricevuta.drive_copia_stato = "completata"
         except DriveServiceError as exc:
@@ -1582,6 +1588,14 @@ def _parse_float_opt(valore: str | None) -> float | None:
 
 
 FASCE_TARIFFA = ["Nord", "Altro"]
+CHIAVE_CARTELLA_DRIVE = "google_drive_folder_id"
+
+
+def _cartella_drive_configurata(db: Session) -> str | None:
+    impostazione = db.get(ImpostazioneApp, CHIAVE_CARTELLA_DRIVE)
+    if impostazione and impostazione.valore.strip():
+        return impostazione.valore.strip()
+    return os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip() or None
 
 
 @app.get("/configurazione")
@@ -1595,6 +1609,7 @@ def configurazione_pagina(
     periodi = {r.tipo_evento: r for r in db.query(PeriodoEvento).all()}
     tariffe = db.query(Tariffa).order_by(Tariffa.tipo_evento, Tariffa.fascia).all()
     operatori = db.query(Operatore).order_by(Operatore.username).all()
+    cartella_drive = _cartella_drive_configurata(db)
 
     return templates.TemplateResponse(
         request=request,
@@ -1607,8 +1622,45 @@ def configurazione_pagina(
             "tariffe": tariffe,
             "operatori": operatori,
             "fasce_tariffa": FASCE_TARIFFA,
+            "cartella_drive": cartella_drive,
         },
     )
+
+
+@app.post("/configurazione/drive/cartella")
+def configurazione_salva_cartella_drive(
+    request: Request,
+    url_o_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    username, redirect = _richiedi_operatore_admin(request)
+    if redirect:
+        return redirect
+
+    try:
+        folder_id = normalizza_id_cartella(url_o_id)
+    except DriveServiceError as exc:
+        query = urlencode({"sezione": "drive", "errore": str(exc)})
+        return RedirectResponse(url=f"/configurazione?{query}", status_code=303)
+
+    impostazione = db.get(ImpostazioneApp, CHIAVE_CARTELLA_DRIVE)
+    folder_id_precedente = impostazione.valore if impostazione else None
+    if impostazione:
+        impostazione.valore = folder_id
+    else:
+        db.add(ImpostazioneApp(chiave=CHIAVE_CARTELLA_DRIVE, valore=folder_id))
+
+    db.add(
+        LogEvento(
+            oggetto_tipo="impostazione_app",
+            oggetto_id=None,
+            azione="cartella_drive_ricevute_modificata",
+            operatore=username,
+            dettagli={"prima": folder_id_precedente, "dopo": folder_id},
+        )
+    )
+    db.commit()
+    return RedirectResponse(url="/configurazione?sezione=drive&ok=1", status_code=303)
 
 
 @app.post("/configurazione/periodi/{tipo_evento}")

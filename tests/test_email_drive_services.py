@@ -3,7 +3,12 @@ import os
 import unittest
 from unittest.mock import Mock, patch
 
-from app.drive_service import DriveServiceError, carica_ricevuta_drive, crea_cartella_ricevute
+from app.drive_service import (
+    DriveServiceError,
+    carica_ricevuta_drive,
+    crea_cartella_ricevute,
+    normalizza_id_cartella,
+)
 from app.email_service import costruisci_email_conferma_nucleo, invia_conferma_nucleo
 
 
@@ -50,6 +55,19 @@ class EmailConfirmationTests(unittest.TestCase):
 
 
 class DriveServiceTests(unittest.TestCase):
+    def test_shared_folder_url_normalizes_to_id(self):
+        self.assertEqual(
+            normalizza_id_cartella("https://drive.google.com/drive/folders/folder_123?usp=sharing"),
+            "folder_123",
+        )
+
+    def test_plain_folder_id_is_accepted(self):
+        self.assertEqual(normalizza_id_cartella("folder_123-abc"), "folder_123-abc")
+
+    def test_invalid_folder_value_is_rejected(self):
+        with self.assertRaises(DriveServiceError):
+            normalizza_id_cartella("not a valid folder id")
+
     def test_upload_targets_configured_folder_and_returns_file_id(self):
         risposta = Mock(status_code=200)
         risposta.json.return_value = {"id": "drive-file-123"}
@@ -71,6 +89,21 @@ class DriveServiceTests(unittest.TestCase):
                 carica_ricevuta_drive("ricevuta.pdf", b"pdf-bytes", "application/pdf")
 
         token.assert_not_called()
+
+    def test_upload_uses_selected_folder_before_environment_default(self):
+        risposta = Mock(status_code=200)
+        risposta.json.return_value = {"id": "drive-file-123"}
+        with (
+            patch.dict(os.environ, {"GOOGLE_DRIVE_FOLDER_ID": "environment-folder"}),
+            patch("app.drive_service._access_token", return_value="access-token"),
+            patch("app.drive_service.httpx.post", return_value=risposta) as post,
+        ):
+            carica_ricevuta_drive(
+                "ricevuta.pdf", b"pdf-bytes", "application/pdf", folder_id="selected-folder"
+            )
+
+        metadata = json.loads(post.call_args.kwargs["files"]["metadata"][1])
+        self.assertEqual(metadata["parents"], ["selected-folder"])
 
     def test_folder_creation_reports_google_forbidden_reason(self):
         risposta = Mock(status_code=403)
