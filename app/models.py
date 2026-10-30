@@ -1,5 +1,6 @@
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -14,6 +15,16 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
+
+STATO_ATTIVA = "Attiva"
+STATO_ANNULLATA = "Annullata"
+STATO_DA_CALCOLARE = "Da_calcolare"
+# Valore salvato -> etichetta mostrata all'utente.
+STATI_ISCRIZIONE = {
+    STATO_ATTIVA: "Attiva",
+    STATO_ANNULLATA: "Annullata",
+    STATO_DA_CALCOLARE: "Da calcolare",
+}
 
 
 class Famiglia(Base):
@@ -55,7 +66,7 @@ class Partecipante(Base):
     flag_cena_ristorante_domenica = Column(Boolean)  # solo se flag_bosco_domenica; None = non applicabile
     note = Column(Text)
     fascia_prezzo = Column(String, default="Altro")  # 'Nord' | 'Altro'
-    stato_iscrizione = Column(String, default="Inviata")
+    stato_iscrizione = Column(String, nullable=False, default=STATO_DA_CALCOLARE)
     token_annullamento = Column(String, unique=True, index=True)
     notti_calcolate = Column(Integer)
     prezzo_lordo = Column(Numeric)
@@ -64,6 +75,13 @@ class Partecipante(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     famiglia = relationship("Famiglia", back_populates="partecipanti")
+
+    __table_args__ = (
+        CheckConstraint(
+            "stato_iscrizione IN (" + ", ".join(f"'{s}'" for s in STATI_ISCRIZIONE) + ")",
+            name="ck_partecipanti_stato_iscrizione",
+        ),
+    )
 
 
 class Pagamento(Base):

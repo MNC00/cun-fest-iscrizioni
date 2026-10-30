@@ -35,7 +35,7 @@
         <div class="col-auto">
             <label class="form-label" for="stato">Filtra per stato</label>
             <select class="form-select" id="stato" name="stato" onchange="this.form.submit()">
-                <option value="attivi" {% if stato_corrente == "attivi" %}selected{% endif %}>Attive (esclude annullate)</option>
+                <option value="attivi" {% if stato_corrente == "attivi" %}selected{% endif %}>Non annullate (Attive e Da calcolare)</option>
                 <option value="annullati" {% if stato_corrente == "annullati" %}selected{% endif %}>Solo annullate</option>
                 <option value="tutti" {% if stato_corrente == "tutti" %}selected{% endif %}>Tutte (incluse annullate)</option>
             </select>
@@ -118,7 +118,7 @@
                                         </span>
                                     </div>
                                     <div class="small text-muted">
-                                        Stato: {{ p.stato_iscrizione }}
+                                        Stato: {{ STATI_ISCRIZIONE.get(p.stato_iscrizione, p.stato_iscrizione) }}
                                         {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
                                         {% if p[CAMPO_EVENTO[valore]] %}· {{ etichetta }}{% endif %}
                                         {% endfor %}

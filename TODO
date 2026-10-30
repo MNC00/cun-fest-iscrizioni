@@ -1,16 +1,4 @@
 
 ## Modifiche richieste al software
 
-1. **Messaggi di errore più chiari:** rendere gli errori comprensibili e indicare all'utente come correggere i dati inseriti, soprattutto durante l'iscrizione.
 
-2. **Interfaccia operatore responsive:** ottimizzare l'interfaccia per smartphone e tablet, mantenendo una buona usabilità su qualsiasi dimensione dello schermo.
-
-3. **Note per le ricevute di bonifico:** verificare dove vengono salvate e visualizzate le note inserite dagli iscritti e renderle accessibili agli operatori.
-
-4. **Condivisione delle ricevute di bonifico:** implementare un sistema per raccogliere le ricevute in una cartella condivisibile esternamente al software.
-
-5. QUANDO ISCRIVO UN NUCLEO DEVE ARRIVARE SOLO UNA MAIL ALLA MAIL INSERITA CON IL RIEPILOGO DI TUTTI I PARTECIPANTI, NON MAIL SEPARATE
-6. C'è qualcosa di strano sulla mail di default, infatti ho fatto un iscrizione con le tariffe popolate e mi è arrivata una mail dicendo che i prezzi non si sapevano, poi ho cliccato su ricaclola prezzo (senza cambiare nulla) e mi ha calcolato il prezzo e mandato la mail di aggiornamento, ma quello che dovrebbe fare è mandare direttamente la mail con il prezzo se ci sono le
-7. QUANDO ANNULLO UN ISCRIZIONE DI UN CAPONUCLEO DALLA DASHBOARD NON HO LA POSSIBILITà DI ANNULLARE L'ISCRIZIONE DI TUTTO IL NUCLEO MA SOLO LA SUA
-
-**Indicazioni generali:** analizza prima l'implementazione esistente e riutilizza, ove possibile, le funzionalità già presenti. Evita duplicazioni e modifiche non necessarie; mantieni il sistema focalizzato sulla gestione delle iscrizioni. Valida le modifiche con test appropriati e segnala eventuali requisiti ambigui prima di prendere decisioni architetturali.

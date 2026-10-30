@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.models import LogEvento, Partecipante, PeriodoEvento, Tariffa
+from app.models import STATO_ATTIVA, LogEvento, Partecipante, PeriodoEvento, Tariffa
 
 ANNO_RIFERIMENTO = 2026
 ETA_LIMITE_SCONTO_GIOVANI = 30
@@ -146,7 +146,7 @@ def _salva_e_logga(partecipante: Partecipante, db: Session, dettagli: dict) -> d
     partecipante.prezzo_lordo = dettagli["prezzo_lordo"]
     partecipante.sconto_eta = dettagli["sconto_eta"]
     partecipante.prezzo_netto = dettagli["prezzo_netto"]
-    partecipante.stato_iscrizione = "Calcolata"
+    partecipante.stato_iscrizione = STATO_ATTIVA
 
     log = LogEvento(
         oggetto_tipo="partecipante",

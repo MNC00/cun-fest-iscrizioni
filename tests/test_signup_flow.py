@@ -113,7 +113,7 @@ class SignupFlowTests(unittest.TestCase):
             referente_nome="Anna", referente_cognome="Rossi", email="famiglia@example.org"
         )
         referente = Partecipante(nome="Anna", cognome="Rossi", stato_iscrizione="Annullata")
-        altro = Partecipante(nome="Luca", cognome="Rossi", stato_iscrizione="Inviata")
+        altro = Partecipante(nome="Luca", cognome="Rossi", stato_iscrizione="Da_calcolare")
         referente.famiglia = famiglia
         altro.famiglia = famiglia
         famiglia.partecipanti = [referente, altro]

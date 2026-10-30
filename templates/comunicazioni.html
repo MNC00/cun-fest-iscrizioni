@@ -20,32 +20,51 @@
             <h2 class="h5 mb-3">Filtra destinatari</h2>
             <form method="post" action="/comunicazioni">
                 <div class="row g-3 mb-3">
-                    <div class="col-md-4">
-                        <label class="form-label" for="fascia">Fascia</label>
-                        <select class="form-select" id="fascia" name="fascia">
-                            <option value="" {% if not filtri.fascia %}selected{% endif %}>Tutte</option>
-                            {% for opzione in ["Nord", "Altro"] %}
-                            <option value="{{ opzione }}" {% if filtri.fascia == opzione %}selected{% endif %}>{{ opzione }}</option>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label" for="provenienza">Provenienza</label>
+                        <select class="form-select" id="provenienza" name="provenienza">
+                            <option value="" {% if not filtri.provenienza %}selected{% endif %}>Tutte</option>
+                            {% for opzione in PROVENIENZE %}
+                            <option value="{{ opzione }}" {% if filtri.provenienza == opzione %}selected{% endif %}>{{ opzione }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-12 col-md-6">
                         <label class="form-label" for="stato_iscrizione">Stato iscrizione</label>
                         <select class="form-select" id="stato_iscrizione" name="stato_iscrizione">
                             <option value="" {% if not filtri.stato_iscrizione %}selected{% endif %}>Tutti</option>
-                            {% for opzione in ["Inviata", "Calcolata", "Confermata", "Annullata"] %}
-                            <option value="{{ opzione }}" {% if filtri.stato_iscrizione == opzione %}selected{% endif %}>{{ opzione }}</option>
+                            {% for valore, etichetta in STATI_ISCRIZIONE.items() %}
+                            <option value="{{ valore }}" {% if filtri.stato_iscrizione == valore %}selected{% endif %}>{{ etichetta }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label" for="tipo_evento">Evento</label>
-                        <select class="form-select" id="tipo_evento" name="tipo_evento">
-                            <option value="" {% if not filtri.tipo_evento %}selected{% endif %}>Tutti</option>
+                    <div class="col-12">
+                        <span class="form-label d-block" id="etichetta-eventi">Eventi</span>
+                        <div role="group" aria-labelledby="etichetta-eventi">
                             {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
-                            <option value="{{ valore }}" {% if filtri.tipo_evento == valore %}selected{% endif %}>{{ etichetta }}</option>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" name="tipo_evento"
+                                       id="evento-{{ valore }}" value="{{ valore }}"
+                                       {% if valore in filtri.tipo_evento %}checked{% endif %}>
+                                <label class="form-check-label" for="evento-{{ valore }}">{{ etichetta }}</label>
+                            </div>
                             {% endfor %}
-                        </select>
+                        </div>
+                        <div class="form-text">Nessun evento selezionato = tutti.</div>
+                        <div class="mt-2" role="group" aria-label="Combinazione eventi">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="combinazione_eventi"
+                                       id="combinazione-qualsiasi" value="qualsiasi"
+                                       {% if filtri.combinazione_eventi != 'tutti' %}checked{% endif %}>
+                                <label class="form-check-label" for="combinazione-qualsiasi">Almeno uno degli eventi</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="combinazione_eventi"
+                                       id="combinazione-tutti" value="tutti"
+                                       {% if filtri.combinazione_eventi == 'tutti' %}checked{% endif %}>
+                                <label class="form-check-label" for="combinazione-tutti">Tutti gli eventi selezionati</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

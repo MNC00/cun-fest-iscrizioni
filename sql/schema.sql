@@ -40,7 +40,9 @@ CREATE TABLE IF NOT EXISTS partecipanti (
     flag_cun_fest BOOLEAN DEFAULT FALSE,
     note TEXT,
     fascia_prezzo TEXT DEFAULT 'Altro', -- 'Nord' | 'Altro'
-    stato_iscrizione TEXT DEFAULT 'Inviata',
+    stato_iscrizione TEXT NOT NULL DEFAULT 'Da_calcolare'
+        CONSTRAINT ck_partecipanti_stato_iscrizione
+        CHECK (stato_iscrizione IN ('Attiva', 'Annullata', 'Da_calcolare')),
     token_annullamento TEXT UNIQUE,
     notti_calcolate INTEGER,
     prezzo_lordo NUMERIC,

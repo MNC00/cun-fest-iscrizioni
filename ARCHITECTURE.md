@@ -24,7 +24,7 @@ Non è usato un ORM migration tool: le modifiche di schema sono script SQL in `s
 ## Modelli (`app/models.py`)
 
 - **Famiglia**: referente iscrizione (nome, cognome, email, telefono) — 1:N con `Partecipante`.
-- **Partecipante**: dati soggiorno (date, pasti, fascia prezzo), stato iscrizione, prezzo calcolato.
+- **Partecipante**: dati soggiorno (date, pasti, fascia prezzo), stato iscrizione (`Da_calcolare` → `Attiva` al calcolo del prezzo; `Annullata`), prezzo calcolato.
 - **Tariffa**: listino prezzi per fascia, con validità temporale.
 - **Pagamento**: 1:1 con `Partecipante`, importo dovuto/pagato, stato pagamento.
 - **Operatore**: utenti che accedono alla dashboard.

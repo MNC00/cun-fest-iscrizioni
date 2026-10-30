@@ -42,6 +42,8 @@ per una installazione nuova). Migrazioni incrementali successive sono in
 Per il reset annuale (nuova edizione del festival) vedi
 [NUOVA_EDIZIONE.md](NUOVA_EDIZIONE.md).
 
+Gli stati di un'iscrizione sono solo `Attiva` (prezzo calcolato), `Da_calcolare` e `Annullata`. Su un database esistente esegui `sql/alter_partecipanti_stati_iscrizione.sql` **prima** di distribuire questa versione: riclassifica i vecchi stati e aggiunge il vincolo che ammette solo questi tre valori.
+
 ## Storage (ricevute di pagamento)
 
 Render (piano free) ha un filesystem effimero: i file caricati non
@@ -74,7 +76,7 @@ Supabase resta lo storage privato usato dall'app. Se la copia Drive fallisce, il
 - **Dashboard** (`/dashboard`): elenco famiglie/partecipanti, azioni rapide (modifica, ricalcolo prezzo, annullamento).
 - **Modifica iscrizione** (`/modifica-iscrizione/{id}`): aggiorna dati partecipante e ricalcola il prezzo.
 - **Pagamenti** (`/pagamenti`): stato pagamento per partecipante, segna come pagato.
-- **Comunicazioni di massa** (`/comunicazioni`): invio email filtrato per fascia/stato/zona.
+- **Comunicazioni di massa** (`/comunicazioni`): invio email filtrato per provenienza (Nord/Centro/Sud), stato iscrizione (Attiva/Annullata/Da calcolare) ed eventi (anche più eventi insieme: almeno uno oppure tutti).
 - **Report pasti** (`/report-pasti`): conteggio giornaliero colazioni/pranzi/cene, export CSV.
 - **Ricevute di pagamento** (`/ricevute/{token}`, pubblica): le famiglie caricano le ricevute dei bonifici (uno o più file per un unico bonifico dell'intero nucleo, oppure ricevute separate per bonifici parziali); il link è incluso nelle email di conferma/aggiornamento prezzo. I file sono salvati su Supabase Storage privato e copiati nella cartella Drive configurata. Gli operatori vedono note, stato copia e verifica da `/pagamenti`; la verifica dell'importo resta manuale.
 - **Configurazione** (`/configurazione`, solo operatori amministratori — flag `Operatore.is_admin`): gestione di date evento, tariffe e account operatore da interfaccia web.

@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Upload
 from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.auth import (
@@ -40,6 +40,8 @@ from app.email_service import (
     invia_conferma_nucleo,
 )
 from app.models import (
+    STATI_ISCRIZIONE,
+    STATO_DA_CALCOLARE,
     Famiglia,
     ImpostazioneApp,
     LogEvento,
@@ -84,6 +86,7 @@ templates.env.globals["CAMPO_EVENTO"] = CAMPO_EVENTO
 # Usata da _nav.html per mostrare/nascondere il link "Configurazione" senza
 # dover passare is_admin nel context di ogni singola route.
 templates.env.globals["is_admin_operatore"] = get_current_operatore_is_admin
+templates.env.globals["STATI_ISCRIZIONE"] = STATI_ISCRIZIONE
 
 # Sul form pubblico il partecipante sceglie solo la zona di provenienza geografica
 # (Nord/Centro/Sud): la fascia di prezzo effettiva (usata per il calcolo) ne è
@@ -95,6 +98,9 @@ MAPPA_ZONA_FASCIA = {
     "Centro": "Altro",
     "Sud": "Altro",
 }
+# Provenienze selezionabili (stesse del form pubblico), usate anche dai filtri.
+PROVENIENZE = list(MAPPA_ZONA_FASCIA)
+templates.env.globals["PROVENIENZE"] = PROVENIENZE
 
 
 def _deriva_fascia_da_zona(zona_provenienza: str | None, fascia_dichiarata: str) -> str:
@@ -514,10 +520,7 @@ def ricalcola_prezzi_mancanti(request: Request, db: Session = Depends(get_db)):
     partecipanti = (
         db.query(Partecipante)
         .options(joinedload(Partecipante.famiglia))
-        .filter(
-            Partecipante.prezzo_netto.is_(None),
-            Partecipante.stato_iscrizione != "Annullata",
-        )
+        .filter(Partecipante.stato_iscrizione == STATO_DA_CALCOLARE)
         .all()
     )
 
@@ -1434,18 +1437,40 @@ async def ricevute_upload(
 
 
 
-def _query_destinatari(db: Session, fascia: str, stato_iscrizione: str, tipo_evento: str = ""):
-    """Costruisce la query dei partecipanti destinatari in base ai filtri di comunicazione."""
+def _query_destinatari(
+    db: Session,
+    provenienza: str = "",
+    stato_iscrizione: str = "",
+    eventi: list[str] | None = None,
+    tutti_gli_eventi: bool = False,
+):
+    """Costruisce la query dei partecipanti destinatari in base ai filtri di comunicazione.
+
+    Con più eventi selezionati, per default basta partecipare ad almeno uno
+    di essi; con tutti_gli_eventi=True serve partecipare a tutti.
+    """
     query = db.query(Partecipante).join(Famiglia)
-    if fascia:
-        query = query.filter(Partecipante.fascia_prezzo == fascia)
+    if provenienza:
+        query = query.filter(Partecipante.zona_provenienza == provenienza)
     if stato_iscrizione:
         query = query.filter(Partecipante.stato_iscrizione == stato_iscrizione)
-    if tipo_evento:
-        campo = CAMPO_EVENTO.get(tipo_evento)
-        if campo:
-            query = query.filter(getattr(Partecipante, campo).is_(True))
+    condizioni = [
+        getattr(Partecipante, CAMPO_EVENTO[evento]).is_(True)
+        for evento in (eventi or [])
+        if evento in CAMPO_EVENTO
+    ]
+    if condizioni:
+        query = query.filter(and_(*condizioni) if tutti_gli_eventi else or_(*condizioni))
     return query
+
+
+def _filtri_comunicazioni_default() -> dict:
+    return {
+        "provenienza": "",
+        "stato_iscrizione": "",
+        "tipo_evento": [],
+        "combinazione_eventi": "qualsiasi",
+    }
 
 
 @app.get("/comunicazioni")
@@ -1454,7 +1479,7 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
     if not username:
         return RedirectResponse(url="/login", status_code=303)
 
-    numero_destinatari = _query_destinatari(db, "", "", "").count()
+    numero_destinatari = _query_destinatari(db).count()
 
     return templates.TemplateResponse(
         request=request,
@@ -1462,7 +1487,7 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
         context={
             "title": "Comunicazioni",
             "username": username,
-            "filtri": {"fascia": "", "stato_iscrizione": "", "tipo_evento": ""},
+            "filtri": _filtri_comunicazioni_default(),
             "numero_destinatari": numero_destinatari,
             "oggetto": "",
             "testo_libero": "",
@@ -1475,9 +1500,10 @@ def comunicazioni_form(request: Request, db: Session = Depends(get_db)):
 def comunicazioni_submit(
     request: Request,
     azione: str = Form(...),
-    fascia: str = Form(""),
+    provenienza: str = Form(""),
     stato_iscrizione: str = Form(""),
-    tipo_evento: str = Form(""),
+    tipo_evento: list[str] = Form([]),
+    combinazione_eventi: str = Form("qualsiasi"),
     oggetto: str = Form(""),
     testo_libero: str = Form(""),
     db: Session = Depends(get_db),
@@ -1487,12 +1513,19 @@ def comunicazioni_submit(
         return RedirectResponse(url="/login", status_code=303)
 
     filtri = {
-        "fascia": fascia,
+        "provenienza": provenienza,
         "stato_iscrizione": stato_iscrizione,
         "tipo_evento": tipo_evento,
+        "combinazione_eventi": combinazione_eventi,
     }
 
-    destinatari = _query_destinatari(db, fascia, stato_iscrizione, tipo_evento).all()
+    destinatari = _query_destinatari(
+        db,
+        provenienza,
+        stato_iscrizione,
+        tipo_evento,
+        tutti_gli_eventi=combinazione_eventi == "tutti",
+    ).all()
     risultato = None
 
     if azione == "invia":
