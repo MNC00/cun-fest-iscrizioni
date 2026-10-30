@@ -72,7 +72,7 @@
             <p class="text-muted mb-0">Non hai ancora caricato nessuna ricevuta.</p>
             {% else %}
             <div class="table-responsive">
-            <table class="table table-sm align-middle">
+            <table class="table table-sm align-middle table-stack">
                 <thead>
                     <tr>
                         <th>File</th>
@@ -84,12 +84,12 @@
                 <tbody>
                     {% for ricevuta in ricevute %}
                     <tr>
-                        <td>{{ ricevuta.nome_file_originale }}</td>
-                        <td>{{ ricevuta.created_at.strftime('%d/%m/%Y %H:%M') if ricevuta.created_at else '-' }}</td>
-                        <td>
+                        <td data-label="File">{{ ricevuta.nome_file_originale }}</td>
+                        <td data-label="Caricata il">{{ ricevuta.created_at.strftime('%d/%m/%Y %H:%M') if ricevuta.created_at else '-' }}</td>
+                        <td data-label="Partecipanti coperti">
                             {{ ricevuta.partecipanti_coperti | map(attribute='partecipante') | map(attribute='nome') | join(', ') }}
                         </td>
-                        <td>
+                        <td data-label="Stato">
                             {% if ricevuta.verificata %}
                             <span class="badge bg-success">Verificata</span>
                             {% else %}

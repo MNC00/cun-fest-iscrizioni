@@ -8,18 +8,32 @@ body {
 	min-width: 0;
 }
 
-.table-responsive {
-	overscroll-behavior-x: contain;
-}
-
-.table-responsive td,
-.table-responsive th {
-	overflow-wrap: anywhere;
-}
-
 .public-nav .navbar-nav,
 .operator-header nav {
 	flex-wrap: wrap;
+}
+
+/* Tabelle di modifica: restano una griglia da scorrere, mai compressa. */
+.table-responsive {
+	overscroll-behavior-x: contain;
+	-webkit-overflow-scrolling: touch;
+}
+
+.table-scroll > .table {
+	min-width: var(--table-min-width, 40rem);
+}
+
+.table-scroll th:first-child,
+.table-scroll td:first-child {
+	position: sticky;
+	left: 0;
+	z-index: 1;
+	background: var(--bs-body-bg);
+	box-shadow: 1px 0 0 var(--bs-border-color);
+}
+
+.scroll-hint {
+	display: none;
 }
 
 @media (max-width: 767.98px) {
@@ -31,10 +45,6 @@ body {
 	.public-nav .navbar-nav {
 		flex-direction: row;
 		gap: 0.25rem 0.5rem;
-	}
-
-	.public-nav .nav-link {
-		padding-inline: 0.4rem;
 	}
 
 	.operator-header {
@@ -49,11 +59,171 @@ body {
 		margin-inline: -0.35rem;
 	}
 
+	.public-nav .nav-link,
 	.operator-header .nav-link {
-		padding: 0.35rem 0.45rem;
+		display: inline-flex;
+		align-items: center;
+		padding-inline: 0.6rem;
 	}
 
-	.table-responsive {
-		margin-inline: -0.25rem;
+	.scroll-hint {
+		display: block;
+		margin-bottom: 0.5rem;
+		font-size: 0.8125rem;
+		color: var(--bs-secondary-color);
+	}
+
+	/* Tab con molte voci: una riga scorrevole invece di andare a capo. */
+	.nav-tabs {
+		flex-wrap: nowrap;
+		overflow-x: auto;
+		white-space: nowrap;
+		scrollbar-width: thin;
+	}
+
+	.nav-tabs .nav-link {
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.form-control,
+	.form-select {
+		font-size: 1rem;
+	}
+
+	.btn-close {
+		padding: 0.875em;
+	}
+
+	/* Tabelle dense -> una scheda per riga, con l'etichetta di ogni colonna. */
+	.table-stack,
+	.table-stack tbody,
+	.table-stack tr,
+	.table-stack td {
+		display: block;
+		width: 100%;
+	}
+
+	.table-stack {
+		--bs-table-striped-bg: transparent;
+	}
+
+	.table-stack thead {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+	}
+
+	.table-stack tr {
+		margin-bottom: 0.75rem;
+		border: 1px solid var(--bs-border-color);
+		border-radius: var(--bs-border-radius);
+		background: var(--bs-body-bg);
+		overflow: hidden;
+	}
+
+	.table-stack td {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.25rem 0.75rem;
+		padding: 0.6rem 0.85rem;
+		border-bottom: 1px solid var(--bs-border-color-translucent);
+		text-align: right;
+		overflow-wrap: anywhere;
+	}
+
+	.table-stack td:last-child {
+		border-bottom: 0;
+	}
+
+	.table-stack td::before {
+		content: attr(data-label);
+		flex: 0 0 auto;
+		max-width: 45%;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		text-align: left;
+		color: var(--bs-secondary-color);
+	}
+
+	.table-stack td[data-label=""]::before,
+	.table-stack td:not([data-label])::before {
+		display: none;
+	}
+
+	/* Contenuti lunghi (elenchi, azioni) a tutta larghezza sotto l'etichetta. */
+	.table-stack td.cell-block {
+		display: block;
+		text-align: left;
+	}
+
+	.table-stack td.cell-block::before {
+		display: block;
+		max-width: none;
+		margin-bottom: 0.4rem;
+	}
+
+	.table-stack td.cell-actions {
+		justify-content: stretch;
+	}
+
+	.table-stack td.cell-actions > .btn {
+		flex: 1 1 100%;
+	}
+
+	.btn-mobile-full {
+		width: 100%;
+	}
+
+	.row-actions {
+		flex-wrap: wrap;
+	}
+
+	.row-actions > .btn,
+	.row-actions > form {
+		flex: 1 1 100%;
+	}
+
+	.row-actions > form .btn {
+		width: 100%;
+	}
+}
+
+/* Bersagli di tocco da 44px su ogni schermo touch o stretto; 16px nei campi evita lo zoom automatico di iOS. */
+@media (pointer: coarse), (max-width: 767.98px) {
+	.btn,
+	.form-control,
+	.form-select,
+	.nav-link {
+		min-height: 44px;
+	}
+
+	.nav-link {
+		display: inline-flex;
+		align-items: center;
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.form-control,
+	.form-select {
+		font-size: 1rem;
+	}
+
+	.form-check-input {
+		width: 1.35em;
+		height: 1.35em;
+	}
+
+	.form-check-label {
+		padding-top: 0.15rem;
 	}
 }

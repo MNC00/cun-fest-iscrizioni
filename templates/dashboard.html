@@ -32,7 +32,7 @@
 
     <form method="get" action="/dashboard" class="row g-2 align-items-end mb-3">
         <input type="hidden" name="evento" value="{{ evento_corrente }}">
-        <div class="col-auto">
+        <div class="col-12 col-sm-auto">
             <label class="form-label" for="stato">Filtra per stato</label>
             <select class="form-select" id="stato" name="stato" onchange="this.form.submit()">
                 <option value="attivi" {% if stato_corrente == "attivi" %}selected{% endif %}>Non annullate (Attive e Da calcolare)</option>
@@ -43,25 +43,25 @@
     </form>
 
     <div class="row g-3 mb-3">
-        <div class="col-sm-4">
+        <div class="col-4">
             <div class="card text-center shadow-sm">
-                <div class="card-body py-2">
+                <div class="card-body py-2 px-1 px-sm-3">
                     <div class="h4 mb-0">{{ totale_partecipanti }}</div>
                     <div class="small text-muted">Partecipanti totali</div>
                 </div>
             </div>
         </div>
-        <div class="col-sm-4">
+        <div class="col-4">
             <div class="card text-center shadow-sm">
-                <div class="card-body py-2">
+                <div class="card-body py-2 px-1 px-sm-3">
                     <div class="h4 mb-0">{{ nuclei_familiari }}</div>
                     <div class="small text-muted">Nuclei familiari (&gt;1 persona)</div>
                 </div>
             </div>
         </div>
-        <div class="col-sm-4">
+        <div class="col-4">
             <div class="card text-center shadow-sm">
-                <div class="card-body py-2">
+                <div class="card-body py-2 px-1 px-sm-3">
                     <div class="h4 mb-0">{{ iscritti_singoli }}</div>
                     <div class="small text-muted">Iscrizioni singole</div>
                 </div>
@@ -71,7 +71,7 @@
 
     <form method="post" action="/ricalcola-prezzi-mancanti" class="mb-3"
           onsubmit="return confirm('Ricalcolare il prezzo di tutti i partecipanti senza prezzo e inviare le email di aggiornamento?');">
-        <button type="submit" class="btn btn-warning">
+        <button type="submit" class="btn btn-warning btn-mobile-full">
             Ricalcola tutti i prezzi mancanti e invia le email
         </button>
     </form>
@@ -84,7 +84,7 @@
             <p class="text-muted mb-0">Nessuna famiglia iscritta al momento.</p>
             {% else %}
             <div class="table-responsive">
-            <table class="table table-striped align-middle">
+            <table class="table table-striped align-middle table-stack">
                 <thead>
                     <tr>
                         <th>Famiglia</th>
@@ -97,11 +97,11 @@
                 <tbody>
                     {% for famiglia in famiglie %}
                     <tr>
-                        <td>#{{ famiglia.id }}</td>
-                        <td>{{ famiglia.referente_nome }} {{ famiglia.referente_cognome }}</td>
-                        <td>{{ famiglia.email }}</td>
-                        <td>{{ famiglia.telefono or "-" }}</td>
-                        <td>
+                        <td data-label="Famiglia">#{{ famiglia.id }}</td>
+                        <td data-label="Referente">{{ famiglia.referente_nome }} {{ famiglia.referente_cognome }}</td>
+                        <td data-label="Email">{{ famiglia.email }}</td>
+                        <td data-label="Telefono">{{ famiglia.telefono or "-" }}</td>
+                        <td data-label="Partecipanti" class="cell-block">
                             {% if not famiglia.partecipanti %}
                             <span class="text-muted">Nessun partecipante</span>
                             {% else %}
@@ -129,7 +129,7 @@
                                     {% if p.note %}
                                     <div class="small text-muted fst-italic">Note: {{ p.note }}</div>
                                     {% endif %}
-                                    <div class="d-flex gap-2 mt-1">
+                                    <div class="d-flex flex-wrap gap-2 mt-1 row-actions">
                                         {% if p.stato_iscrizione != "Annullata" %}
                                         <a href="/modifica-iscrizione/{{ p.id }}" class="btn btn-sm btn-outline-secondary">
                                             Modifica

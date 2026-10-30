@@ -23,7 +23,7 @@
     <div class="card shadow-sm mb-3">
         <div class="card-body">
             <form method="get" action="/pagamenti" class="row g-2 align-items-end">
-                <div class="col-auto">
+                <div class="col-12 col-sm-auto">
                     <label class="form-label" for="stato">Filtra per stato</label>
                     <select class="form-select" id="stato" name="stato" onchange="this.form.submit()">
                         <option value="tutti" {% if stato_filtro == "tutti" %}selected{% endif %}>Tutti</option>
@@ -31,7 +31,7 @@
                         <option value="pagati" {% if stato_filtro == "pagati" %}selected{% endif %}>Pagati</option>
                     </select>
                 </div>
-                <div class="col-auto">
+                <div class="col-12 col-sm-auto">
                     <label class="form-label" for="evento">Filtra per evento</label>
                     <select class="form-select" id="evento" name="evento" onchange="this.form.submit()">
                         <option value="tutti" {% if evento_corrente == "tutti" %}selected{% endif %}>Tutti gli eventi</option>
@@ -40,8 +40,8 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-outline-primary">Filtra</button>
+                <div class="col-12 col-sm-auto">
+                    <button type="submit" class="btn btn-outline-primary btn-mobile-full">Filtra</button>
                 </div>
             </form>
         </div>
@@ -55,7 +55,7 @@
             <p class="text-muted mb-0">Nessun pagamento trovato per il filtro selezionato.</p>
             {% else %}
             <div class="table-responsive">
-            <table class="table table-striped align-middle">
+            <table class="table table-striped align-middle table-stack">
                 <thead>
                     <tr>
                         <th>Partecipante</th>
@@ -73,23 +73,23 @@
                 <tbody>
                     {% for pagamento in pagamenti %}
                     <tr>
-                        <td>{{ pagamento.partecipante.nome }} {{ pagamento.partecipante.cognome }}</td>
-                        <td class="small text-muted">
+                        <td data-label="Partecipante">{{ pagamento.partecipante.nome }} {{ pagamento.partecipante.cognome }}</td>
+                        <td data-label="Evento" class="small text-muted">
                             {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
                             {% if pagamento.partecipante[CAMPO_EVENTO[valore]] %}{{ etichetta }}<br>{% endif %}
                             {% endfor %}
                         </td>
-                        <td>{{ pagamento.partecipante.famiglia.referente_nome }} {{ pagamento.partecipante.famiglia.referente_cognome }}</td>
-                        <td>{{ "%.2f"|format(pagamento.importo_dovuto or 0) }} €</td>
-                        <td>{{ "%.2f"|format(pagamento.importo_pagato or 0) }} €</td>
-                        <td>
+                        <td data-label="Famiglia (referente)">{{ pagamento.partecipante.famiglia.referente_nome }} {{ pagamento.partecipante.famiglia.referente_cognome }}</td>
+                        <td data-label="Importo dovuto">{{ "%.2f"|format(pagamento.importo_dovuto or 0) }} €</td>
+                        <td data-label="Importo pagato">{{ "%.2f"|format(pagamento.importo_pagato or 0) }} €</td>
+                        <td data-label="Stato">
                             <span class="badge {% if pagamento.stato == 'Pagato' %}bg-success{% elif pagamento.stato == 'Rimborsato' %}bg-secondary{% elif pagamento.stato == 'Parzialmente_pagato' %}bg-warning text-dark{% else %}bg-danger{% endif %}">
                                 {{ pagamento.stato }}
                             </span>
                         </td>
-                        <td>{{ pagamento.metodo or "-" }}</td>
-                        <td>{{ pagamento.data_pagamento or "-" }}</td>
-                        <td class="small">
+                        <td data-label="Metodo">{{ pagamento.metodo or "-" }}</td>
+                        <td data-label="Data pagamento">{{ pagamento.data_pagamento or "-" }}</td>
+                        <td data-label="Ricevute" class="small cell-block">
                             {% set ricevute = ricevute_per_partecipante.get(pagamento.partecipante_id, []) %}
                             {% if not ricevute %}
                             <span class="text-muted">Nessuna</span>
@@ -128,7 +128,7 @@
                             {% endfor %}
                             {% endif %}
                         </td>
-                        <td>
+                        <td class="cell-actions">
                             {% if pagamento.stato != "Pagato" %}
                             <button type="button" class="btn btn-sm btn-outline-success"
                                     data-bs-toggle="modal" data-bs-target="#modalSegnaPagato"

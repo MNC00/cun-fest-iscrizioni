@@ -66,7 +66,8 @@
                 Finché una riga ha le date vuote, l'app non applica alcun vincolo di data per quell'evento
                 (eccetto "Solo pranzo CUN", che richiede almeno la data di inizio per calcolare il prezzo).
             </p>
-            <div class="table-responsive">
+            <p class="scroll-hint">Scorri la tabella lateralmente →</p>
+            <div class="table-responsive table-scroll" style="--table-min-width: 34rem">
             <table class="table align-middle">
                 <thead>
                     <tr>
@@ -111,7 +112,8 @@
                 Una riga con fascia "Base (tutte le fasce)" è la tariffa di default dell'evento; una riga con
                 fascia specifica (Nord/Altro) fa da override solo per i partecipanti di quella fascia.
             </p>
-            <div class="table-responsive">
+            <p class="scroll-hint">Scorri la tabella lateralmente →</p>
+            <div class="table-responsive table-scroll" style="--table-min-width: 62rem">
             <table class="table align-middle">
                 <thead>
                     <tr>
@@ -163,7 +165,7 @@
         <div class="card-body">
             <h2 class="h5 mb-3">Aggiungi nuova tariffa</h2>
             <form method="post" action="/configurazione/tariffe/nuova" class="row g-2 align-items-end">
-                <div class="col-md-2">
+                <div class="col-12 col-md-6 col-xl-2">
                     <label class="form-label">Evento</label>
                     <select class="form-select" name="tipo_evento" required>
                         {% for valore, etichetta in TIPI_EVENTO_LABELS.items() %}
@@ -171,7 +173,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-2">
+                <div class="col-12 col-md-6 col-xl-2">
                     <label class="form-label">Fascia</label>
                     <select class="form-select" name="fascia">
                         <option value="">Base (tutte le fasce)</option>
@@ -180,36 +182,36 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-1">
+                <div class="col-6 col-md-3 col-xl-1">
                     <label class="form-label">Notte</label>
                     <input type="text" class="form-control" name="prezzo_notte">
                 </div>
-                <div class="col-md-1">
+                <div class="col-6 col-md-3 col-xl-1">
                     <label class="form-label">Colaz.</label>
                     <input type="text" class="form-control" name="prezzo_colazione">
                 </div>
-                <div class="col-md-1">
+                <div class="col-6 col-md-3 col-xl-1">
                     <label class="form-label">Pranzo</label>
                     <input type="text" class="form-control" name="prezzo_pranzo">
                 </div>
-                <div class="col-md-1">
+                <div class="col-6 col-md-3 col-xl-1">
                     <label class="form-label">Cena</label>
                     <input type="text" class="form-control" name="prezzo_cena">
                 </div>
-                <div class="col-md-1">
+                <div class="col-6 col-md-3 col-xl-1">
                     <label class="form-label">Tetto</label>
                     <input type="text" class="form-control" name="tetto_spesa_fascia">
                 </div>
-                <div class="col-md-1">
+                <div class="col-6 col-md-3 col-xl-1">
                     <label class="form-label">Sconto %</label>
                     <input type="text" class="form-control" name="sconto_giovani_percentuale">
                 </div>
-                <div class="col-md-1 form-check">
+                <div class="col-6 col-md-3 col-xl-1 form-check">
                     <input type="checkbox" class="form-check-input" name="attivo" id="nuova-tariffa-attiva" checked>
                     <label class="form-check-label" for="nuova-tariffa-attiva">Attiva</label>
                 </div>
-                <div class="col-md-1">
-                    <button type="submit" class="btn btn-success">Crea</button>
+                <div class="col-12 col-md-3 col-xl-1">
+                    <button type="submit" class="btn btn-success w-100">Crea</button>
                 </div>
             </form>
         </div>
@@ -220,7 +222,8 @@
     <div class="card shadow-sm mb-3">
         <div class="card-body">
             <h2 class="h5 mb-3">Operatori</h2>
-            <div class="table-responsive">
+            <p class="scroll-hint">Scorri la tabella lateralmente →</p>
+            <div class="table-responsive table-scroll" style="--table-min-width: 46rem">
             <table class="table align-middle">
                 <thead>
                     <tr>
@@ -268,24 +271,24 @@
         <div class="card-body">
             <h2 class="h5 mb-3">Nuovo operatore</h2>
             <form method="post" action="/configurazione/operatori/nuovo" class="row g-2 align-items-end">
-                <div class="col-md-3">
+                <div class="col-12 col-md-6 col-xl-3">
                     <label class="form-label">Username</label>
                     <input type="text" class="form-control" name="nuovo_username" required>
                 </div>
-                <div class="col-md-3">
+                <div class="col-12 col-md-6 col-xl-3">
                     <label class="form-label">Nome e cognome</label>
                     <input type="text" class="form-control" name="nuovo_nome">
                 </div>
-                <div class="col-md-3">
+                <div class="col-12 col-md-6 col-xl-3">
                     <label class="form-label">Password</label>
                     <input type="password" class="form-control" name="nuovo_password" required>
                 </div>
-                <div class="col-md-2 form-check">
+                <div class="col-12 col-md-6 col-xl-2 form-check">
                     <input type="checkbox" class="form-check-input" name="nuovo_is_admin" id="nuovo-operatore-admin">
                     <label class="form-check-label" for="nuovo-operatore-admin">Amministratore</label>
                 </div>
-                <div class="col-md-1">
-                    <button type="submit" class="btn btn-success">Crea</button>
+                <div class="col-12 col-xl-1">
+                    <button type="submit" class="btn btn-success w-100">Crea</button>
                 </div>
             </form>
         </div>
